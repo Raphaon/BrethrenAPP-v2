@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npx prisma *)",
+      "Bash(node -e \"console.log\\(require\\('d:/Projets/AI/BrethrenApp/node_modules/prisma/package.json'\\).version\\)\")",
+      "Bash(node -e \"console.log\\(require\\('d:/Projets/AI/BrethrenApp/node_modules/@prisma/client/package.json'\\).version\\)\")",
+      "Bash(node -e \"const p = require\\('./node_modules/prisma/package.json'\\); console.log\\(p.exports && p.exports['./config'] ? 'config export exists' : 'no config export'\\)\")",
+      "Bash(./node_modules/.bin/prisma --version)",
+      "Bash(npx tsc *)",
+      "Bash(python -c ' *)",
+      "Bash(node -e \"require\\('sharp'\\); console.log\\('sharp ok'\\)\")",
+      "Bash(timeout 6 node dist/server.js)",
+      "Bash(node -e ' *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"http://localhost:5000/uploads/\")",
+      "Bash(dir \"d:\\\\Projets\\\\AI\\\\BrethrenApp\" /b)",
+      "Bash(findstr -i \"cahier\\\\|spec\\\\|use case\\\\|charges\\\\|README\")",
+      "Bash(Get-ChildItem -Path \"D:\\\\Projets\\\\AI\\\\BrethrenApp\" -Directory)",
+      "Bash(Select-Object Name)",
+      "Bash(node -e \"const l = require\\('lucide-react'\\); console.log\\(Object.keys\\(l\\).filter\\(k => k.toLowerCase\\(\\).includes\\('group'\\)\\)\\)\")"
+    ]
+  }
+}

@@ -1,0 +1,2730 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                              String                      @id @default(uuid())
+  email                           String                      @unique
+  phone                           String?                     @unique
+  password                        String
+  firstName                       String
+  lastName                        String
+  avatar                          String?
+  status                          UserStatus                  @default(PENDING)
+  lastLoginAt                     DateTime?
+  createdAt                       DateTime                    @default(now())
+  updatedAt                       DateTime                    @updatedAt
+  deletedAt                       DateTime?
+  memberId                        String?                     @unique
+  tenantId                        String?
+  emailVerifiedAt                 DateTime?
+  createdAnnouncements            Announcement[]
+  attendances                     attendances[]
+  auditLogs                       AuditLog[]                  @relation("AuditLogActor")
+  createdCirculars                Circular[]
+  comments                        Comment[]
+  conversationParticipants        ConversationParticipant[]
+  deviceTokens                    DeviceToken[]
+  donations                       Donation[]                  @relation("DonationUser")
+  emailVerificationTokens       EmailVerificationToken[]
+  eventAttendees                  EventAttendee[]
+  createdEvents                   Event[]
+  groups                          groups[]
+  invitationTokens               InvitationToken[]
+  journeyInteractions             JourneyInteraction[]
+  sentMessages                    Message[]                   @relation("MessageSender")
+  mentoredVisitors                NewVisitor[]                @relation("VisitorMentor")
+  newsPosts                      NewsPost[]
+  notifications                   Notification[]
+  passwordResetTokens             PasswordResetToken[]
+  personalEvents                  PersonalEvent[]
+  programs                        programs[]
+  refreshTokens                   RefreshToken[]
+  service_assignments             service_assignments[]
+  service_plans                   service_plans[]
+  shopOrders                      ShopOrder[]
+  ownedTenants                    Tenant[] @relation("tenants_ownerIdTousers")
+  uploads                         UploadAsset[]
+  userReports                     UserReport[]  @relation("UserReports")
+  resolvedReports                 UserReport[]  @relation("ResolvedReports")
+  userRoles                       UserRole[]
+  supervisedFamilies              FamilyOfDisciples[] @relation("FDSupervisor")
+  soulAttendancesRecorded         SoulCulteAttendance[] @relation("AttendanceRecorder")
+  journeyStepsCompleted           SoulJourneyStepProgress[] @relation("StepCompleter")
+  recoveryCasesOpened             RecoveryCase[] @relation("CaseOpener")
+  recoveryCasesAssigned           RecoveryCase[] @relation("CaseAssignee")
+  createdCampaigns                PublicCampaign[] @relation("CampaignCreator")
+  createdLiveChannels             LiveChannel[] @relation("LiveChannelCreator")
+  createdLiveServices             LiveService[] @relation("LiveServiceCreator")
+  liveHostAssignments             LiveHostAssignment[] @relation("LiveHostAssignments")
+  liveChatMessages                LiveChatMessage[] @relation("LiveChatUser")
+  liveViewerSessions              LiveViewerSession[] @relation("ViewerSessions")
+  liveEngagements                 LiveEngagementEvent[] @relation("LiveEngagements")
+  prayerRequestsAssigned          LivePrayerRequest[] @relation("PrayerAssignee")
+  createdReplays                  MediaReplay[] @relation("ReplayCreator")
+  recoveryCasesClosed             RecoveryCase[] @relation("CaseCloser")
+  soulAssignmentsGiven            SoulAssignment[] @relation("AssignmentGiver")
+  followUpTasksCreated            FollowUpTask[] @relation("TaskCreator")
+  followUpTasksAssigned           FollowUpTask[] @relation("TaskAssignee")
+  member                          Member?                     @relation(fields: [memberId], references: [id])
+  tenant                          Tenant?                    @relation("users_tenantIdTotenants", fields: [tenantId], references: [id])
+
+  @@index([email])
+  @@index([status])
+  @@index([deletedAt])
+  @@index([tenantId])
+  @@map("users")
+}
+
+model Role {
+  id              String           @id @default(uuid())
+  name            String           @unique
+  displayName     String
+  description     String?
+  level           Int
+  isSystem        Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+
+  @@index([name])
+  @@index([level])
+  @@map("roles")
+}
+
+model Permission {
+  id              String           @id @default(uuid())
+  name            String           @unique
+  displayName     String
+  module          String
+  action          String
+  description     String?
+  createdAt       DateTime         @default(now())
+  rolePermissions RolePermission[]
+
+  @@index([module])
+  @@index([name])
+  @@map("permissions")
+}
+
+model UserRole {
+  id         String    @id @default(uuid())
+  userId     String
+  roleId     String
+  regionId   String?
+  districtId String?
+  assemblyId String?
+  ministryId String?
+  assignedAt DateTime  @default(now())
+  assignedBy String?
+  expiresAt  DateTime?
+  tenantId   String?
+  assembly   Assembly? @relation(fields: [assemblyId], references: [id])
+  district   District? @relation(fields: [districtId], references: [id])
+  ministry   Ministry? @relation(fields: [ministryId], references: [id])
+  region     Region?   @relation(fields: [regionId], references: [id])
+  role       Role      @relation(fields: [roleId], references: [id])
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id])
+  user       User      @relation(fields: [userId], references: [id])
+
+  @@unique([userId, roleId, tenantId, regionId, districtId, assemblyId, ministryId])
+  @@index([userId])
+  @@index([roleId])
+  @@index([tenantId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  roleId       String
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id])
+  role         Role       @relation(fields: [roleId], references: [id])
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  token     String    @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+  ipAddress String?
+  userAgent String?
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([token])
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  token     String    @unique
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([token])
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+model Region {
+  id                String             @id @default(uuid())
+  name              String
+  code              String?
+  description       String?
+  latitude          Float?
+  longitude         Float?
+  status            String             @default("ACTIVE")
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  deletedAt         DateTime?
+  hqAssemblyId      String?
+  tenantId          String
+  announcements     Announcement[]
+  assignments       Assignment[]
+  circulars         Circular[]
+  districts         District[]
+  events            Event[]
+  newsPosts        NewsPost[]
+  hqAssembly        Assembly?          @relation("RegionHQ", fields: [hqAssemblyId], references: [id])
+  tenant              Tenant                       @relation(fields: [tenantId], references: [id])
+  territoryAccounts TerritoryAccount[]
+  userRoles         UserRole[]
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, name])
+  @@index([name])
+  @@index([deletedAt])
+  @@index([tenantId])
+  @@map("regions")
+}
+
+model District {
+  id                String             @id @default(uuid())
+  name              String
+  code              String?
+  description       String?
+  regionId          String
+  latitude          Float?
+  longitude         Float?
+  status            String             @default("ACTIVE")
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  deletedAt         DateTime?
+  hqAssemblyId      String?
+  announcements     Announcement[]
+  assemblies        Assembly[]
+  assignments       Assignment[]
+  circulars         Circular[]
+  hqAssembly        Assembly?          @relation("DistrictHQ", fields: [hqAssemblyId], references: [id])
+  region            Region             @relation(fields: [regionId], references: [id])
+  events            Event[]
+  newsPosts        NewsPost[]
+  territoryAccounts TerritoryAccount[]
+  userRoles         UserRole[]
+
+  @@unique([name, regionId])
+  @@index([regionId])
+  @@index([deletedAt])
+  @@map("districts")
+}
+
+model Assembly {
+  id                String             @id @default(uuid())
+  name              String
+  code              String?
+  address           String?
+  districtId        String
+  latitude          Float?
+  longitude         Float?
+  status            String             @default("ACTIVE")
+  phone             String?
+  email             String?
+  foundedAt         DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  deletedAt         DateTime?
+  announcements     Announcement[]
+  district          District           @relation(fields: [districtId], references: [id])
+  assignments       Assignment[]
+  hqForDistricts    District[]         @relation("DistrictHQ")
+  donations         Donation[]
+  events            Event[]
+  groups            groups[]
+  members           Member[]
+  ministries        Ministry[]
+  newVisitors       NewVisitor[]
+  newsPosts        NewsPost[]
+  pastors           Pastor[]
+  preachingPoints   PreachingPoint[]
+  products          Product[]
+  programs          programs[]
+  hqForRegions      Region[]           @relation("RegionHQ")
+  service_plans     service_plans[]
+  shopOrders        ShopOrder[]
+  territoryAccounts   TerritoryAccount[]
+  transfersFrom       Transfer[]           @relation("TransferFromAssembly")
+  transfersTo         Transfer[]           @relation("TransferToAssembly")
+  userRoles           UserRole[]
+  familiesOfDisciples FamilyOfDisciples[]
+  liveChannels        LiveChannel[] @relation("AssemblyLiveChannels")
+  liveServices        LiveService[] @relation("AssemblyLiveServices")
+  mediaReplays        MediaReplay[] @relation("AssemblyReplays")
+
+  @@unique([name, districtId])
+  @@index([districtId])
+  @@index([deletedAt])
+  @@index([districtId, deletedAt])
+  @@map("assemblies")
+}
+
+model PreachingPoint {
+  id         String    @id @default(uuid())
+  name       String
+  address    String?
+  assemblyId String
+  latitude   Float?
+  longitude  Float?
+  status     String    @default("ACTIVE")
+  leaderId   String?
+  phone      String?
+  foundedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+  members    Member[]  @relation("PreachingPointMembers")
+  assembly   Assembly  @relation(fields: [assemblyId], references: [id])
+
+  @@index([assemblyId])
+  @@index([deletedAt])
+  @@map("preaching_points")
+}
+
+model Member {
+  id               String           @id @default(uuid())
+  matricule        String           @unique
+  firstName        String
+  lastName         String
+  gender           Gender
+  birthDate        DateTime?
+  birthPlace       String?
+  phone            String?
+  email            String?
+  address          String?
+  photo            String?
+  status           MemberStatus     @default(ACTIVE)
+  assemblyId       String
+  preachingPointId String?
+  salvationDate    DateTime?
+  baptismDate      DateTime?
+  memberSince      DateTime?
+  profession       String?
+  maritalStatus    String?
+  emergencyContact String?
+  notes            String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  deletedAt        DateTime?
+  isBaptized       Boolean          @default(false)
+  isFirstTime      Boolean          @default(false)
+  attendances      attendances[]
+  donations        Donation[]
+  eventAttendees   EventAttendee[]
+  group_members    group_members[]
+  assembly         Assembly         @relation(fields: [assemblyId], references: [id])
+  preachingPoint   PreachingPoint?  @relation("PreachingPointMembers", fields: [preachingPointId], references: [id])
+  ministryMembers  MinistryMember[]
+  newcomerJourney  NewVisitor?      @relation("VisitorConvertedMember")
+  invitedSouls     NewVisitor[]     @relation("SoulInvitedBy")
+  ledFamilies      FamilyOfDisciples[] @relation("FDLeader")
+  deputyFamilies   FamilyOfDisciples[] @relation("FDDeputy")
+  discipleMakerProfile DiscipleMakerProfile?
+  discipleMakerPartner DiscipleMakerProfile[] @relation("DMPartner")
+  pastor           Pastor?
+  transfers        Transfer[]       @relation("TransferMember")
+  user             User?
+
+  @@index([assemblyId])
+  @@index([status])
+  @@index([gender])
+  @@index([matricule])
+  @@index([deletedAt])
+  @@index([assemblyId, status])
+  @@index([assemblyId, deletedAt])
+  @@index([lastName, firstName])
+  @@map("members")
+}
+
+model Pastor {
+  id          String          @id @default(uuid())
+  memberId    String          @unique
+  title       String?
+  ordainedAt  DateTime?
+  status      String          @default("ACTIVE")
+  assemblyId  String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  deletedAt   DateTime?
+  assignments Assignment[]
+  children    PastorChild[]
+  diplomas    PastorDiploma[]
+  spouse      PastorSpouse?
+  assembly    Assembly?       @relation(fields: [assemblyId], references: [id])
+  member      Member          @relation(fields: [memberId], references: [id])
+
+  @@index([memberId])
+  @@index([assemblyId])
+  @@map("pastors")
+}
+
+model Assignment {
+  id         String           @id @default(uuid())
+  pastorId   String
+  entityType String
+  assemblyId String?
+  districtId String?
+  regionId   String?
+  role       String?
+  startDate  DateTime
+  endDate    DateTime?
+  status     AssignmentStatus @default(ACTIVE)
+  notes      String?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  assembly   Assembly?        @relation(fields: [assemblyId], references: [id])
+  district   District?        @relation(fields: [districtId], references: [id])
+  pastor     Pastor           @relation(fields: [pastorId], references: [id])
+  region     Region?          @relation(fields: [regionId], references: [id])
+
+  @@index([pastorId])
+  @@index([status])
+  @@index([entityType])
+  @@map("assignments")
+}
+
+model Ministry {
+  id                String           @id @default(uuid())
+  name              String
+  description       String?
+  assemblyId        String
+  leaderId          String?
+  type              String?
+  status            String           @default("ACTIVE")
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  deletedAt         DateTime?
+  chatEnabled       Boolean          @default(false)
+  memberListVisible Boolean          @default(true)
+  joinMode          GroupJoinMode    @default(FREE)
+  isPrivate         Boolean          @default(false)
+  conversationId    String?          @unique
+  announcements     Announcement[]
+  assembly          Assembly         @relation(fields: [assemblyId], references: [id])
+  conversation      Conversation?    @relation(fields: [conversationId], references: [id])
+  members           MinistryMember[]
+  newsPosts        NewsPost[]
+  programs          programs[]
+  userRoles         UserRole[]
+
+  @@unique([name, assemblyId])
+  @@index([assemblyId])
+  @@index([deletedAt])
+  @@map("ministries")
+}
+
+model MinistryMember {
+  id         String    @id @default(uuid())
+  ministryId String
+  memberId   String
+  role       String    @default("member")
+  joinedAt   DateTime  @default(now())
+  leftAt     DateTime?
+  status     String    @default("ACTIVE")
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  member     Member    @relation(fields: [memberId], references: [id])
+  ministry   Ministry  @relation(fields: [ministryId], references: [id])
+
+  @@unique([ministryId, memberId])
+  @@index([ministryId])
+  @@index([memberId])
+  @@map("ministry_members")
+}
+
+model Transfer {
+  id              String         @id @default(uuid())
+  memberId        String
+  fromAssemblyId  String
+  toAssemblyId    String
+  requestedBy     String
+  approvedBy      String?
+  reason          String
+  notes           String?
+  status          TransferStatus @default(PENDING)
+  requestedAt     DateTime       @default(now())
+  processedAt     DateTime?
+  effectiveDate   DateTime?
+  rejectionReason String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  fromAssembly    Assembly       @relation("TransferFromAssembly", fields: [fromAssemblyId], references: [id])
+  member          Member         @relation("TransferMember", fields: [memberId], references: [id])
+  toAssembly      Assembly       @relation("TransferToAssembly", fields: [toAssemblyId], references: [id])
+
+  @@index([memberId])
+  @@index([status])
+  @@index([fromAssemblyId])
+  @@index([toAssemblyId])
+  @@map("transfers")
+}
+
+model Announcement {
+  id          String             @id @default(uuid())
+  title       String
+  content     String
+  level       AnnouncementLevel
+  status      AnnouncementStatus @default(DRAFT)
+  authorId    String
+  regionId    String?
+  districtId  String?
+  assemblyId  String?
+  ministryId  String?
+  publishedAt DateTime?
+  archivedAt  DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  deletedAt   DateTime?
+  scheduledAt DateTime?
+  attachments Json               @default("[]")
+  tenantId    String?
+  assembly    Assembly?          @relation(fields: [assemblyId], references: [id])
+  author      User               @relation(fields: [authorId], references: [id])
+  district    District?          @relation(fields: [districtId], references: [id])
+  ministry    Ministry?          @relation(fields: [ministryId], references: [id])
+  region      Region?            @relation(fields: [regionId], references: [id])
+  tenant     Tenant?           @relation(fields: [tenantId], references: [id])
+  comments    Comment[]
+
+  @@index([level])
+  @@index([status])
+  @@index([authorId])
+  @@index([deletedAt])
+  @@index([tenantId])
+  @@map("announcements")
+}
+
+model Circular {
+  id          String    @id @default(uuid())
+  reference   String    @unique
+  title       String
+  content     String
+  level       String
+  status      String    @default("DRAFT")
+  authorId    String
+  regionId    String?
+  districtId  String?
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  attachments Json      @default("[]")
+  tenantId    String?
+  author      User      @relation(fields: [authorId], references: [id])
+  district    District? @relation(fields: [districtId], references: [id])
+  region      Region?   @relation(fields: [regionId], references: [id])
+  tenant     Tenant?  @relation(fields: [tenantId], references: [id])
+  comments    Comment[]
+
+  @@index([status])
+  @@index([level])
+  @@index([deletedAt])
+  @@index([tenantId])
+  @@map("circulars")
+}
+
+model Event {
+  id           String          @id @default(uuid())
+  title        String
+  description  String?
+  startDate    DateTime
+  endDate      DateTime?
+  location     String?
+  latitude     Float?
+  longitude    Float?
+  level        String
+  status       EventStatus     @default(DRAFT)
+  authorId     String
+  regionId     String?
+  districtId   String?
+  assemblyId   String?
+  maxAttendees Int?
+  isPublic     Boolean         @default(true)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  deletedAt    DateTime?
+  tenantId     String?
+  comments     Comment[]
+  attendees    EventAttendee[]
+  soulArrivals NewVisitor[]    @relation("SoulArrivalEvent")
+  soulAttendances SoulCulteAttendance[]
+  liveServices LiveService[]   @relation("EventLiveService")
+  assembly     Assembly?       @relation(fields: [assemblyId], references: [id])
+  author       User            @relation(fields: [authorId], references: [id])
+  district     District?       @relation(fields: [districtId], references: [id])
+  region       Region?         @relation(fields: [regionId], references: [id])
+  tenant      Tenant?        @relation(fields: [tenantId], references: [id])
+
+  @@index([startDate])
+  @@index([status])
+  @@index([level])
+  @@index([deletedAt])
+  @@index([tenantId])
+  @@map("events")
+}
+
+model Notification {
+  id         String             @id @default(uuid())
+  userId     String
+  title      String
+  message    String
+  type       NotificationType   @default(INFO)
+  status     NotificationStatus @default(UNREAD)
+  entityType String?
+  entityId   String?
+  data       Json?
+  readAt     DateTime?
+  createdAt  DateTime           @default(now())
+  user       User               @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id         String      @id @default(uuid())
+  actorId    String?
+  action     AuditAction
+  entityType String?
+  entityId   String?
+  oldValues  Json?
+  newValues  Json?
+  ipAddress  String?
+  userAgent  String?
+  metadata   Json?
+  createdAt  DateTime    @default(now())
+  tenantId   String?
+  actor      User?       @relation("AuditLogActor", fields: [actorId], references: [id])
+  tenant    Tenant?    @relation(fields: [tenantId], references: [id])
+
+  @@index([actorId])
+  @@index([action])
+  @@index([entityType])
+  @@index([createdAt])
+  @@index([tenantId])
+  @@map("audit_logs")
+}
+
+model Comment {
+  id             String            @id @default(uuid())
+  content        String
+  targetType     CommentTargetType
+  authorId       String
+  announcementId String?
+  circularId     String?
+  eventId        String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  deletedAt      DateTime?
+  newsPostId     String?
+  parentId       String?
+  announcement   Announcement?     @relation(fields: [announcementId], references: [id])
+  author         User              @relation(fields: [authorId], references: [id])
+  circular       Circular?         @relation(fields: [circularId], references: [id])
+  event          Event?            @relation(fields: [eventId], references: [id])
+  newsPosts     NewsPost?       @relation(fields: [newsPostId], references: [id])
+  comments       Comment?          @relation("commentsTocomments", fields: [parentId], references: [id])
+  other_comments Comment[]         @relation("commentsTocomments")
+
+  @@index([authorId])
+  @@index([announcementId])
+  @@index([circularId])
+  @@index([eventId])
+  @@index([targetType, createdAt])
+  @@index([deletedAt])
+  @@index([newsPostId])
+  @@index([parentId])
+  @@map("comments")
+}
+
+model PersonalEvent {
+  id          String              @id @default(uuid())
+  userId      String
+  title       String
+  description String?
+  startDate   DateTime
+  endDate     DateTime?
+  location    String?
+  notes       String?
+  color       String?
+  isAllDay    Boolean             @default(false)
+  status      PersonalEventStatus @default(ACTIVE)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  deletedAt   DateTime?
+  user        User                @relation(fields: [userId], references: [id])
+
+  @@index([userId, startDate])
+  @@index([deletedAt])
+  @@map("personal_events")
+}
+
+model Donation {
+  id                String         @id @default(uuid())
+  reference         String         @unique
+  userId            String?
+  memberId          String?
+  assemblyId        String?
+  amount            Decimal        @db.Decimal(12, 2)
+  currency          String         @default("XAF")
+  method            DonationMethod
+  status            DonationStatus @default(PENDING)
+  purpose           String?
+  notes             String?
+  provider          String?
+  providerReference String?
+  paidAt            DateTime?
+  metadata          Json?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  deletedAt         DateTime?
+  assembly          Assembly?      @relation(fields: [assemblyId], references: [id])
+  member            Member?        @relation(fields: [memberId], references: [id])
+  user              User?          @relation("DonationUser", fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([memberId])
+  @@index([assemblyId])
+  @@index([status, createdAt])
+  @@index([deletedAt])
+  @@map("donations")
+}
+
+model DeviceToken {
+  id         String         @id @default(uuid())
+  userId     String
+  token      String         @unique
+  platform   DevicePlatform
+  provider   String         @default("expo")
+  appVersion String?
+  deviceName String?
+  lastSeenAt DateTime       @default(now())
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  revokedAt  DateTime?
+  user       User           @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([platform])
+  @@index([revokedAt])
+  @@map("device_tokens")
+}
+
+model UploadAsset {
+  id           String          @id @default(uuid())
+  uploadedById String
+  originalName String
+  fileName     String
+  mimeType     String
+  size         Int
+  kind         UploadAssetKind
+  url          String
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  deletedAt    DateTime?
+  uploadedBy   User            @relation(fields: [uploadedById], references: [id])
+
+  @@index([uploadedById, createdAt])
+  @@index([kind])
+  @@index([deletedAt])
+  @@map("upload_assets")
+}
+
+model Conversation {
+  id           String                    @id @default(uuid())
+  title        String?
+  isGroup      Boolean                   @default(false)
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+  deletedAt    DateTime?
+  participants ConversationParticipant[]
+  messages     Message[]
+  ministry     Ministry?
+
+  @@index([createdAt])
+  @@map("conversations")
+}
+
+model ConversationParticipant {
+  id             String       @id @default(uuid())
+  conversationId String
+  userId         String
+  joinedAt       DateTime     @default(now())
+  leftAt         DateTime?
+  role           String       @default("member")
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  user           User         @relation(fields: [userId], references: [id])
+
+  @@unique([conversationId, userId])
+  @@index([conversationId])
+  @@index([userId])
+  @@map("conversation_participants")
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  senderId       String
+  content        String
+  type           String       @default("text")
+  readAt         DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  sender         User         @relation("MessageSender", fields: [senderId], references: [id])
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([createdAt])
+  @@map("messages")
+}
+
+model EventAttendee {
+  id           String         @id @default(uuid())
+  eventId      String
+  userId       String
+  memberId     String?
+  status       AttendeeStatus @default(GOING)
+  registeredAt DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  event        Event          @relation(fields: [eventId], references: [id])
+  member       Member?        @relation(fields: [memberId], references: [id])
+  user         User           @relation(fields: [userId], references: [id])
+
+  @@unique([eventId, userId])
+  @@index([eventId])
+  @@index([userId])
+  @@index([status])
+  @@map("event_attendees")
+}
+
+model TerritoryAccount {
+  id                String    @id @default(uuid())
+  accountName       String
+  accountNumber     String?
+  bankName          String?
+  mobileMoneyNumber String?
+  currency          String    @default("XAF")
+  balance           Decimal   @default(0) @db.Decimal(14, 2)
+  regionId          String?
+  districtId        String?
+  assemblyId        String?
+  isActive          Boolean   @default(true)
+  notes             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+  assembly          Assembly? @relation(fields: [assemblyId], references: [id])
+  district          District? @relation(fields: [districtId], references: [id])
+  region            Region?   @relation(fields: [regionId], references: [id])
+
+  @@index([regionId])
+  @@index([districtId])
+  @@index([assemblyId])
+  @@index([deletedAt])
+  @@map("territory_accounts")
+}
+
+model PastorSpouse {
+  id         String    @id @default(uuid())
+  pastorId   String    @unique
+  firstName  String
+  lastName   String
+  phone      String?
+  email      String?
+  birthDate  DateTime?
+  profession String?
+  notes      String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  pastor     Pastor    @relation(fields: [pastorId], references: [id])
+
+  @@map("pastor_spouses")
+}
+
+model PastorChild {
+  id        String    @id @default(uuid())
+  pastorId  String
+  firstName String
+  lastName  String
+  birthDate DateTime?
+  gender    Gender
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  pastor    Pastor    @relation(fields: [pastorId], references: [id])
+
+  @@index([pastorId])
+  @@map("pastor_children")
+}
+
+model PastorDiploma {
+  id          String      @id @default(uuid())
+  pastorId    String
+  type        DiplomaType
+  title       String
+  institution String?
+  year        Int?
+  notes       String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  pastor      Pastor      @relation(fields: [pastorId], references: [id])
+
+  @@index([pastorId])
+  @@map("pastor_diplomas")
+}
+
+model NewVisitor {
+  id                 String               @id @default(uuid())
+  firstName          String
+  lastName           String
+  phone              String?
+  email              String?
+  gender             Gender
+  address            String?
+  birthDate          DateTime?
+  firstVisitDate     DateTime             @default(now())
+  assemblyId         String
+  status             NewVisitorStatus     @default(NEW)
+  notes              String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  deletedAt          DateTime?
+  baptismDate        DateTime?
+  baptismStatus      BaptismStatus        @default(UNKNOWN)
+  cellGroupAssigned  Boolean              @default(false)
+  cellGroupId        String?
+  closedAt           DateTime?
+  closureReason      String?
+  convertedMemberId  String?              @unique
+  courseEnrolled     Boolean              @default(false)
+  courseEnrolledDate DateTime?
+  currentStep        Int                  @default(1)
+  diagnosisDate      DateTime?
+  giftGiven          Boolean              @default(false)
+  integrationScore   Int                  @default(0)
+  journeyStatus      JourneyStatus        @default(ACTIVE)
+  mentorAssignedDate DateTime?
+  mentorId           String?
+  ministryAssigned   Boolean              @default(false)
+  ministryId         String?
+  orientedDepartment String?
+  profileDiagnosed   Boolean              @default(false)
+  profileType        VisitorProfileType?
+  source             NewcomerSource?
+  spiritualNeed      SpiritualNeed?
+  welcomeCallDate    DateTime?
+  welcomeCallMade    Boolean              @default(false)
+  // ── Champs consolidation (module FD) ─────────────────────────────────────
+  soulType                SoulType             @default(NA)
+  phone2                  String?
+  neighborhood            String?
+  ageRange                AgeRange?
+  arrivalEventId          String?
+  invitedByMemberId       String?
+  inviterType             InviterType?
+  consentToContact        Boolean              @default(true)
+  transportNeeded         Boolean              @default(false)
+  prayerNeeded            Boolean              @default(false)
+  familyOfDisciplesId     String?
+  primaryMakerProfileId   String?
+  secondaryMakerProfileId String?
+  riskScore               Int                  @default(0)
+  lastContactDate         DateTime?
+  lastCulteDate           DateTime?
+  consecutiveAbsences     Int                  @default(0)
+  language                String?
+
+  interactions            JourneyInteraction[]
+  contacts                NewVisitorContact[]
+  assembly                Assembly             @relation(fields: [assemblyId], references: [id])
+  convertedMember         Member?              @relation("VisitorConvertedMember", fields: [convertedMemberId], references: [id])
+  mentor                  User?                @relation("VisitorMentor", fields: [mentorId], references: [id])
+  arrivalEvent            Event?               @relation("SoulArrivalEvent", fields: [arrivalEventId], references: [id])
+  invitedByMember         Member?              @relation("SoulInvitedBy", fields: [invitedByMemberId], references: [id])
+  familyOfDisciples       FamilyOfDisciples?   @relation("FDSouls", fields: [familyOfDisciplesId], references: [id])
+  primaryMaker            DiscipleMakerProfile? @relation("PrimaryMakerSouls", fields: [primaryMakerProfileId], references: [id])
+  secondaryMaker          DiscipleMakerProfile? @relation("SecondaryMakerSouls", fields: [secondaryMakerProfileId], references: [id])
+  assignments             SoulAssignment[]
+  culteAttendances        SoulCulteAttendance[]
+  consolidationJourneys   SoulConsolidationJourney[]
+  recoveryCases           RecoveryCase[]
+  followUpTasks           FollowUpTask[]
+
+  @@index([assemblyId])
+  @@index([status])
+  @@index([journeyStatus])
+  @@index([currentStep])
+  @@index([mentorId])
+  @@index([deletedAt])
+  @@index([familyOfDisciplesId])
+  @@index([primaryMakerProfileId])
+  @@index([riskScore])
+  @@index([soulType])
+  @@map("new_visitors")
+}
+
+model NewVisitorContact {
+  id           String      @id @default(uuid())
+  newVisitorId String
+  contactType  ContactType
+  contactDate  DateTime    @default(now())
+  notes        String?
+  contactedBy  String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  newVisitor   NewVisitor  @relation(fields: [newVisitorId], references: [id])
+
+  @@index([newVisitorId])
+  @@map("new_visitor_contacts")
+}
+
+model JourneyInteraction {
+  id        String             @id @default(uuid())
+  visitorId String
+  authorId  String
+  type      JourneyContactType
+  date      DateTime           @default(now())
+  notes     String
+  createdAt DateTime           @default(now())
+  author    User               @relation(fields: [authorId], references: [id])
+  visitor   NewVisitor         @relation(fields: [visitorId], references: [id])
+
+  @@index([visitorId])
+  @@index([authorId])
+  @@index([date])
+  @@map("journey_interactions")
+}
+
+model Product {
+  id          String          @id @default(uuid())
+  title       String
+  author      String?
+  publisher   String?
+  type        ProductType
+  price       Decimal         @db.Decimal(10, 2)
+  currency    String          @default("XAF")
+  description String?
+  coverUrl    String?
+  stock       Int             @default(0)
+  status      ProductStatus   @default(AVAILABLE)
+  assemblyId  String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  deletedAt   DateTime?
+  assembly    Assembly?       @relation(fields: [assemblyId], references: [id])
+  orderItems  ShopOrderItem[]
+
+  @@index([type])
+  @@index([status])
+  @@index([assemblyId])
+  @@index([deletedAt])
+  @@map("products")
+}
+
+model ShopOrder {
+  id              String          @id @default(uuid())
+  reference       String          @unique
+  userId          String
+  assemblyId      String?
+  total           Decimal         @db.Decimal(10, 2)
+  currency        String          @default("XAF")
+  status          ShopOrderStatus @default(PENDING)
+  deliveryMethod  DeliveryMethod  @default(PICKUP)
+  deliveryAddress String?
+  notes           String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  items           ShopOrderItem[]
+  assembly        Assembly?       @relation(fields: [assemblyId], references: [id])
+  user            User            @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([assemblyId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("shop_orders")
+}
+
+model ShopOrderItem {
+  id        String    @id @default(uuid())
+  orderId   String
+  productId String
+  quantity  Int
+  unitPrice Decimal   @db.Decimal(10, 2)
+  order     ShopOrder @relation(fields: [orderId], references: [id])
+  product   Product   @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("shop_order_items")
+}
+
+model ErrorLog {
+  id          String        @id @default(dbgenerated("(gen_random_uuid())::text"))
+  requestId   String?
+  severity    ErrorSeverity @default(ERROR)
+  method      String?
+  path        String?
+  statusCode  Int?
+  errorType   String?
+  message     String
+  stack       String?
+  code        String?
+  userId      String?
+  userEmail   String?
+  tenantId    String?
+  ip          String?
+  userAgent   String?
+  requestBody Json?
+  resolved    Boolean       @default(false)
+  resolvedAt  DateTime?
+  notes       String?
+  createdAt   DateTime      @default(now())
+
+  @@index([severity])
+  @@index([statusCode])
+  @@index([createdAt])
+  @@index([userId])
+  @@index([tenantId])
+  @@index([resolved])
+  @@map("error_logs")
+}
+
+model UserReport {
+  id               String         @id @default(dbgenerated("(gen_random_uuid())::text"))
+  userId           String
+  tenantId         String?
+  appModule        String
+  appAction        String
+  pageUrl          String?
+  userAgent        String?
+  expectedBehavior String
+  actualBehavior   String
+  additionalInfo   String?
+  screenshotUrl    String?
+  severity         ReportSeverity @default(MEDIUM)
+  status           ReportStatus   @default(OPEN)
+  resolvedAt       DateTime?
+  resolvedById     String?
+  resolutionNotes  String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @default(now()) @updatedAt
+  user             User           @relation("UserReports",    fields: [userId],       references: [id])
+  resolvedBy       User?          @relation("ResolvedReports", fields: [resolvedById], references: [id])
+
+  @@index([status])
+  @@index([appModule])
+  @@index([severity])
+  @@index([userId])
+  @@index([tenantId])
+  @@index([createdAt])
+  @@map("user_reports")
+}
+
+model attendances {
+  id          String               @id
+  entityType  AttendanceEntityType
+  entityId    String
+  memberId    String?
+  visitorName String?
+  isPresent   Boolean              @default(true)
+  notes       String?
+  takenById   String
+  sessionDate DateTime
+  createdAt   DateTime             @default(now())
+  members     Member?              @relation(fields: [memberId], references: [id])
+  users       User                 @relation(fields: [takenById], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([memberId])
+  @@index([sessionDate])
+}
+
+model EmailVerificationToken {
+  id        String    @id
+  token     String    @unique
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([token])
+  @@index([userId])
+  @@map("email_verification_tokens")
+}
+
+model group_members {
+  id        String    @id
+  groupId   String
+  memberId  String
+  role      String    @default("member")
+  joinedAt  DateTime  @default(now())
+  leftAt    DateTime?
+  status    String    @default("ACTIVE")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime
+  groups    groups    @relation(fields: [groupId], references: [id])
+  members   Member    @relation(fields: [memberId], references: [id])
+
+  @@unique([groupId, memberId])
+  @@index([groupId])
+  @@index([memberId])
+}
+
+model groups {
+  id            String          @id
+  assemblyId    String
+  name          String
+  type          GroupType       @default(OTHER)
+  description   String?
+  leaderId      String?
+  status        GroupStatus     @default(ACTIVE)
+  meetingDay    String?
+  meetingTime   String?
+  location      String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime
+  deletedAt     DateTime?
+  group_members group_members[]
+  assemblies    Assembly        @relation(fields: [assemblyId], references: [id])
+  users         User?           @relation(fields: [leaderId], references: [id])
+
+  @@unique([name, assemblyId])
+  @@index([assemblyId])
+  @@index([deletedAt])
+  @@index([status])
+}
+
+model InvitationToken {
+  id         String    @id
+  token      String    @unique
+  email      String
+  tenantId   String
+  roleId     String?
+  assemblyId String?
+  invitedBy  String
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  createdAt  DateTime  @default(now())
+  user                      User @relation(fields: [invitedBy], references: [id])
+  tenant              Tenant       @relation(fields: [tenantId], references: [id])
+
+  @@index([email])
+  @@index([tenantId])
+  @@index([token])
+  @@map("invitation_tokens")
+}
+
+model NewsPost {
+  id            String            @id
+  tenantId      String?
+  title         String
+  content       String?
+  type          NewsPostType      @default(NEWS)
+  status        NewsPostStatus    @default(DRAFT)
+  authorId      String
+  level         AnnouncementLevel
+  regionId      String?
+  districtId    String?
+  assemblyId    String?
+  ministryId    String?
+  media         Json              @default("[]")
+  allowComments Boolean           @default(true)
+  featured      Boolean           @default(false)
+  publishedAt   DateTime?
+  archivedAt    DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime
+  deletedAt     DateTime?
+  comments      Comment[]
+  assemblies    Assembly?         @relation(fields: [assemblyId], references: [id])
+  users         User              @relation(fields: [authorId], references: [id])
+  districts     District?         @relation(fields: [districtId], references: [id])
+  ministries    Ministry?         @relation(fields: [ministryId], references: [id])
+  regions       Region?           @relation(fields: [regionId], references: [id])
+  tenant       Tenant?          @relation(fields: [tenantId], references: [id])
+
+  @@index([authorId])
+  @@index([deletedAt])
+  @@index([featured])
+  @@index([level])
+  @@index([publishedAt])
+  @@index([status])
+  @@index([tenantId])
+  @@index([type])
+  @@map("news_posts")
+}
+
+model Plan {
+  id                   String          @id
+  code                 PlanCode        @unique
+  name                 String
+  description          String?
+  monthlyPriceCents    Int             @default(0)
+  currency             String          @default("USD")
+  maxAssemblies        Int?
+  maxMembers           Int?
+  maxAdminUsers        Int?
+  maxRegions           Int?
+  maxDistricts         Int?
+  maxPreachingPoints   Int?
+  maxMinistries        Int?
+  maxGroups            Int?
+  allowRegions         Boolean         @default(false)
+  allowDistricts       Boolean         @default(false)
+  allowAdvancedReports Boolean         @default(false)
+  allowBranding        Boolean         @default(false)
+  allowPublicApi       Boolean         @default(false)
+  supportLevel         String          @default("community")
+  isActive             Boolean         @default(true)
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime
+  subscriptions        Subscription[]
+
+  @@index([isActive])
+  @@map("plans")
+}
+
+model programs {
+  id            String           @id
+  assemblyId    String
+  ministryId    String?
+  name          String
+  description   String?
+  frequency     ProgramFrequency @default(WEEKLY)
+  dayOfWeek     String?
+  startTime     String?
+  endTime       String?
+  location      String?
+  leaderId      String?
+  status        ProgramStatus    @default(ACTIVE)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime
+  deletedAt     DateTime?
+  assemblies    Assembly         @relation(fields: [assemblyId], references: [id])
+  users         User?            @relation(fields: [leaderId], references: [id])
+  ministries    Ministry?        @relation(fields: [ministryId], references: [id])
+  service_plans service_plans[]
+
+  @@index([assemblyId])
+  @@index([deletedAt])
+  @@index([status])
+}
+
+model service_assignments {
+  id            String                  @id
+  servicePlanId String
+  userId        String
+  role          String
+  status        ServiceAssignmentStatus @default(PENDING)
+  notes         String?
+  respondedAt   DateTime?
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime
+  service_plans service_plans           @relation(fields: [servicePlanId], references: [id])
+  users         User                    @relation(fields: [userId], references: [id])
+
+  @@unique([servicePlanId, userId, role])
+  @@index([servicePlanId])
+  @@index([status])
+  @@index([userId])
+}
+
+model service_plans {
+  id                  String                @id
+  assemblyId          String
+  programId           String?
+  title               String
+  date                DateTime
+  startTime           String?
+  endTime             String?
+  location            String?
+  notes               String?
+  status              ServicePlanStatus     @default(DRAFT)
+  createdById         String
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime
+  deletedAt           DateTime?
+  service_assignments service_assignments[]
+  assemblies          Assembly              @relation(fields: [assemblyId], references: [id])
+  users               User                  @relation(fields: [createdById], references: [id])
+  programs            programs?             @relation(fields: [programId], references: [id])
+
+  @@index([assemblyId])
+  @@index([date])
+  @@index([deletedAt])
+  @@index([status])
+}
+
+model Subscription {
+  id                     String             @id
+  tenantId               String
+  planId                 String
+  status                 SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart     DateTime           @default(now())
+  currentPeriodEnd       DateTime?
+  trialEndsAt            DateTime?
+  cancelledAt            DateTime?
+  provider               String?
+  providerCustomerId     String?
+  providerSubscriptionId String?
+  metadata               Json?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime
+  plan                  Plan              @relation(fields: [planId], references: [id])
+  tenant                Tenant            @relation(fields: [tenantId], references: [id])
+
+  @@index([planId])
+  @@index([status])
+  @@map("subscriptions")
+}
+
+model TenantSettings {
+  id                      String   @id
+  tenantId                String   @unique
+  dateFormat              String   @default("dd/MM/yyyy")
+  phoneFormat             String?
+  contactEmail            String?
+  primaryColor            String   @default("#2563eb")
+  secondaryColor          String   @default("#16a34a")
+  onboardingChecklist     Json?
+  notificationPreferences Json?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime
+  tenant              Tenant                   @relation(fields: [tenantId], references: [id])
+
+  @@map("tenant_settings")
+}
+
+model Tenant {
+  id                            String              @id
+  name                          String
+  slug                          String              @unique
+  logo                          String?
+  country                       String?
+  currency                      String              @default("XAF")
+  language                      String              @default("fr")
+  timezone                      String              @default("Africa/Douala")
+  status                        TenantStatus        @default(ACTIVE)
+  ownerId                       String?
+  createdAt                     DateTime            @default(now())
+  updatedAt                     DateTime
+  deletedAt                     DateTime?
+  announcements                 Announcement[]
+  auditLogs                     AuditLog[]
+  circulars                     Circular[]
+  events                        Event[]
+  invitationTokens              InvitationToken[]
+  newsPosts                     NewsPost[]
+  regions                       Region[]
+  subscriptions                 Subscription[]
+  tenantSettings                TenantSettings?
+  owner                         User?           @relation("tenants_ownerIdTousers", fields: [ownerId], references: [id])
+  userRoles                     UserRole[]
+  users                         User[]          @relation("users_tenantIdTotenants")
+  familiesOfDisciples           FamilyOfDisciples[]
+  discipleMakerProfiles         DiscipleMakerProfile[]
+  recoveryCases                 RecoveryCase[]
+  followUpTasks                 FollowUpTask[]
+  consolidationJourneyTemplates ConsolidationJourneyTemplate[]
+  publicCampaigns               PublicCampaign[] @relation("TenantCampaigns")
+  liveChannels                  LiveChannel[] @relation("TenantLiveChannels")
+  liveServices                  LiveService[] @relation("TenantLiveServices")
+  mediaReplays                  MediaReplay[] @relation("TenantReplays")
+
+  @@index([ownerId])
+  @@index([slug])
+  @@index([status])
+  @@map("tenants")
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum MemberStatus {
+  ACTIVE
+  INACTIVE
+  TRANSFERRED
+  DECEASED
+  EXCLUDED
+}
+
+enum AssignmentStatus {
+  ACTIVE
+  CLOSED
+}
+
+enum TransferStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum AnnouncementStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum AnnouncementLevel {
+  NATIONAL
+  REGIONAL
+  DISTRICT
+  ASSEMBLY
+  MINISTRY
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+  COMPLETED
+}
+
+enum NotificationStatus {
+  UNREAD
+  READ
+}
+
+enum NotificationType {
+  INFO
+  WARNING
+  SUCCESS
+  ERROR
+  TRANSFER
+  ASSIGNMENT
+  ANNOUNCEMENT
+  EVENT
+  ROLE_ASSIGNED
+  TRANSFER_REJECTED
+  NEWS
+}
+
+enum GroupJoinMode {
+  FREE
+  APPROVAL
+  INVITE_ONLY
+}
+
+enum AttendeeStatus {
+  GOING
+  NOT_GOING
+  MAYBE
+}
+
+enum AuditAction {
+  LOGIN
+  LOGOUT
+  CREATE
+  UPDATE
+  DELETE
+  TRANSFER_REQUEST
+  TRANSFER_APPROVE
+  TRANSFER_REJECT
+  PUBLISH
+  ARCHIVE
+  ROLE_CHANGE
+  PASSWORD_CHANGE
+  ACCOUNT_ACTIVATE
+  ACCOUNT_DEACTIVATE
+  PASSWORD_RESET
+}
+
+enum HierarchyLevel {
+  NATIONAL
+  REGIONAL
+  DISTRICT
+  ASSEMBLY
+  MINISTRY
+}
+
+enum CommentTargetType {
+  ANNOUNCEMENT
+  CIRCULAR
+  EVENT
+  NEWS_POST
+}
+
+enum PersonalEventStatus {
+  ACTIVE
+  CANCELLED
+  COMPLETED
+}
+
+enum DonationMethod {
+  CASH
+  MOBILE_MONEY
+  CARD
+  BANK_TRANSFER
+}
+
+enum DonationStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+  CANCELLED
+}
+
+enum DevicePlatform {
+  EXPO
+  IOS
+  ANDROID
+  WEB
+}
+
+enum UploadAssetKind {
+  IMAGE
+  VIDEO
+  DOCUMENT
+}
+
+enum MobileDiagnosticSeverity {
+  INFO
+  WARNING
+  ERROR
+  FATAL
+}
+
+enum DiplomaType {
+  BACCALAUREAT
+  LICENCE
+  MASTER
+  DOCTORAT
+  DIPLOME_THEOLOGIE
+  CERTIFICAT_THEOLOGIE
+  AUTRE
+}
+
+enum NewVisitorStatus {
+  // Valeurs originales (rétrocompatibilité)
+  NEW
+  CONTACTED
+  FOLLOWING_UP
+  INTEGRATED
+  INACTIVE
+  // Valeurs étendues pour le module Consolidation
+  ASSIGNED
+  VISITED
+  RETURNED_ONCE
+  RETURNED_TWICE
+  IN_FD
+  IN_FOUNDATION
+  CONSOLIDATED
+  ACTIVE_MEMBER
+  SERVING
+  DISCIPLE_MAKER_TRAINEE
+  DISCIPLE_MAKER
+  AT_RISK
+  TASK_FORCE
+  LOST
+  ARCHIVED
+}
+
+enum ContactType {
+  FIRST_CALL
+  SECOND_CALL
+  THIRD_CALL
+  OTHER_CALL
+  VISIT
+  WELCOME_MESSAGE
+  OTHER
+}
+
+enum NewcomerSource {
+  WORD_OF_MOUTH
+  INVITED_BY_MEMBER
+  SOCIAL_MEDIA
+  EVENT
+  WALK_IN
+  OTHER
+}
+
+enum VisitorProfileType {
+  VISITOR
+  NEW_CONVERT
+  ESTABLISHED_CHRISTIAN
+  RETURNING_MEMBER
+  SEEKER
+}
+
+enum SpiritualNeed {
+  SPIRITUAL
+  SOCIAL
+  MATERIAL
+  FAMILY
+  INTEGRATION
+}
+
+enum BaptismStatus {
+  UNKNOWN
+  ALREADY_BAPTIZED
+  NEEDS_PREPARATION
+  IN_PREPARATION
+  BAPTIZED_HERE
+}
+
+enum JourneyStatus {
+  ACTIVE
+  INTEGRATED
+  RELAUNCHED
+  TRANSFERRED
+  CLOSED
+}
+
+enum JourneyContactType {
+  CALL
+  MESSAGE
+  VISIT
+  PRAYER
+  MEETING
+  OTHER
+}
+
+enum ProductType {
+  BOOK
+  HYMNAL
+  AUDIO
+  RESOURCE
+}
+
+enum ProductStatus {
+  AVAILABLE
+  OUT_OF_STOCK
+  DISCONTINUED
+}
+
+enum ShopOrderStatus {
+  PENDING
+  CONFIRMED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum DeliveryMethod {
+  PICKUP
+  DELIVERY
+}
+
+enum ErrorSeverity {
+  WARNING
+  ERROR
+  CRITICAL
+}
+
+enum ReportSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ReportStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  WONT_FIX
+}
+
+enum AttendanceEntityType {
+  EVENT
+  GROUP
+  PROGRAM
+}
+
+enum GroupStatus {
+  ACTIVE
+  INACTIVE
+  DISSOLVED
+}
+
+enum GroupType {
+  CELL_GROUP
+  PRAYER_CELL
+  CHOIR
+  YOUTH
+  WELCOME_TEAM
+  MEDIA_TEAM
+  BIBLE_STUDY
+  OTHER
+}
+
+enum NewsPostStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum NewsPostType {
+  NEWS
+  HIGHLIGHT
+  MESSAGE
+  TESTIMONY
+  EVENT_RECAP
+}
+
+enum PlanCode {
+  FREE
+  STARTER
+  PRO
+  PREMIUM
+  ENTERPRISE
+}
+
+enum ProgramFrequency {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  OCCASIONAL
+}
+
+enum ProgramStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum ServiceAssignmentStatus {
+  PENDING
+  CONFIRMED
+  DECLINED
+  REPLACED
+  DONE
+}
+
+enum ServicePlanStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+  DELETED
+}
+
+// ─── Consolidation Module Enums ───────────────────────────────────────────────
+
+enum SoulType {
+  NA
+  NC
+}
+
+enum AgeRange {
+  CHILD
+  TEEN
+  YOUNG_ADULT
+  ADULT
+  MIDDLE
+  SENIOR
+}
+
+enum InviterType {
+  DISCIPLE_MAKER
+  MEMBER
+  CAMPAIGN
+  EXTERNAL
+}
+
+enum FDStatus {
+  ACTIVE
+  INACTIVE
+  DISSOLVED
+}
+
+enum SoulAttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum AbsenceReason {
+  TRAVEL
+  ILLNESS
+  WORK
+  TRANSPORT
+  PROMISE_NOT_KEPT
+  UNREACHABLE
+  NO_RETURN
+  OTHER
+}
+
+enum JourneyStepType {
+  WELCOME_CALL
+  VISIT
+  LESSON
+  FD_INTEGRATION
+  BAPTISM_PREP
+  REVIEW
+  OTHER
+}
+
+enum JourneyInstanceStatus {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+  PAUSED
+}
+
+enum StepStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+}
+
+enum RecoveryCaseStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum RecoveryDecision {
+  REINTEGRATED
+  EXTENDED
+  LONG_TERM
+  REMOVED
+}
+
+enum TaskType {
+  CALL
+  VISIT
+  WAKE_UP_CALL
+  REMINDER
+  LESSON
+  FD_INVITE
+  OTHER
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+// ─── Consolidation Module Models ──────────────────────────────────────────────
+
+model FamilyOfDisciples {
+  id            String      @id @default(uuid())
+  tenantId      String
+  assemblyId    String
+  name          String
+  description   String?
+  status        FDStatus    @default(ACTIVE)
+  leaderId      String
+  deputyLeaderId String?
+  supervisorId  String?
+  goal          Int         @default(10)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  deletedAt     DateTime?
+
+  tenant     Tenant          @relation(fields: [tenantId], references: [id])
+  assembly   Assembly        @relation(fields: [assemblyId], references: [id])
+  leader     Member          @relation("FDLeader", fields: [leaderId], references: [id])
+  deputy     Member?         @relation("FDDeputy", fields: [deputyLeaderId], references: [id])
+  supervisor User?           @relation("FDSupervisor", fields: [supervisorId], references: [id])
+  souls       NewVisitor[]         @relation("FDSouls")
+  makers      DiscipleMakerProfile[]
+  assignments SoulAssignment[]
+
+  @@unique([name, assemblyId])
+  @@index([tenantId])
+  @@index([assemblyId])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("families_of_disciples")
+}
+
+model DiscipleMakerProfile {
+  id        String    @id @default(uuid())
+  tenantId  String
+  memberId  String    @unique
+  familyId  String?
+  partnerId String?
+  maxLoad   Int       @default(10)
+  isActive  Boolean   @default(true)
+  startedAt DateTime  @default(now())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  tenant          Tenant              @relation(fields: [tenantId], references: [id])
+  member          Member              @relation(fields: [memberId], references: [id])
+  family          FamilyOfDisciples?  @relation(fields: [familyId], references: [id])
+  partner         Member?             @relation("DMPartner", fields: [partnerId], references: [id])
+  primarySouls    NewVisitor[]        @relation("PrimaryMakerSouls")
+  secondarySouls  NewVisitor[]        @relation("SecondaryMakerSouls")
+  assignments     SoulAssignment[]
+
+  @@index([tenantId])
+  @@index([familyId])
+  @@index([isActive])
+  @@map("disciple_maker_profiles")
+}
+
+model SoulAssignment {
+  id               String    @id @default(uuid())
+  soulId           String
+  discipleMakerId  String
+  assignedById     String
+  familyId         String?
+  assignedAt       DateTime  @default(now())
+  endedAt          DateTime?
+  reason           String?
+  isPrimary        Boolean   @default(true)
+
+  soul          NewVisitor           @relation(fields: [soulId], references: [id])
+  discipleMaker DiscipleMakerProfile @relation(fields: [discipleMakerId], references: [id])
+  assignedBy    User                 @relation("AssignmentGiver", fields: [assignedById], references: [id])
+  family        FamilyOfDisciples?   @relation(fields: [familyId], references: [id])
+
+  @@index([soulId])
+  @@index([discipleMakerId])
+  @@index([familyId])
+  @@map("soul_assignments")
+}
+
+model SoulCulteAttendance {
+  id              String                @id @default(uuid())
+  soulId          String
+  culteDate       DateTime              @db.Date
+  eventId         String?
+  status          SoulAttendanceStatus  @default(PRESENT)
+  absenceReason   AbsenceReason?
+  promisedToCome  Boolean               @default(false)
+  wakeUpCallDone  Boolean               @default(false)
+  transportNeeded Boolean               @default(false)
+  transportOffered Boolean              @default(false)
+  notes           String?
+  recordedById    String
+  createdAt       DateTime              @default(now())
+
+  soul       NewVisitor  @relation(fields: [soulId], references: [id])
+  event      Event?      @relation(fields: [eventId], references: [id])
+  recordedBy User        @relation("AttendanceRecorder", fields: [recordedById], references: [id])
+
+  @@unique([soulId, culteDate])
+  @@index([soulId])
+  @@index([culteDate])
+  @@index([eventId])
+  @@map("soul_culte_attendances")
+}
+
+model ConsolidationJourneyTemplate {
+  id           String    @id @default(uuid())
+  tenantId     String
+  name         String
+  description  String?
+  durationDays Int       @default(30)
+  isDefault    Boolean   @default(false)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  tenant   Tenant                    @relation(fields: [tenantId], references: [id])
+  steps    ConsolidationStepTemplate[]
+  journeys SoulConsolidationJourney[]
+
+  @@index([tenantId])
+  @@map("consolidation_journey_templates")
+}
+
+model ConsolidationStepTemplate {
+  id           String           @id @default(uuid())
+  templateId   String
+  title        String
+  description  String?
+  dueAfterDays Int
+  order        Int
+  isRequired   Boolean          @default(true)
+  stepType     JourneyStepType  @default(OTHER)
+
+  template  ConsolidationJourneyTemplate @relation(fields: [templateId], references: [id])
+  progress  SoulJourneyStepProgress[]
+
+  @@index([templateId])
+  @@map("consolidation_step_templates")
+}
+
+model SoulConsolidationJourney {
+  id          String                @id @default(uuid())
+  soulId      String
+  templateId  String
+  status      JourneyInstanceStatus @default(IN_PROGRESS)
+  startedAt   DateTime              @default(now())
+  completedAt DateTime?
+  notes       String?
+
+  soul     NewVisitor                   @relation(fields: [soulId], references: [id])
+  template ConsolidationJourneyTemplate @relation(fields: [templateId], references: [id])
+  steps    SoulJourneyStepProgress[]
+
+  @@unique([soulId, templateId])
+  @@index([soulId])
+  @@index([status])
+  @@map("soul_consolidation_journeys")
+}
+
+model SoulJourneyStepProgress {
+  id               String      @id @default(uuid())
+  journeyId        String
+  stepTemplateId   String
+  status           StepStatus  @default(PENDING)
+  completedAt      DateTime?
+  completedById    String?
+  notes            String?
+
+  journey      SoulConsolidationJourney  @relation(fields: [journeyId], references: [id])
+  stepTemplate ConsolidationStepTemplate @relation(fields: [stepTemplateId], references: [id])
+  completedBy  User?                     @relation("StepCompleter", fields: [completedById], references: [id])
+
+  @@unique([journeyId, stepTemplateId])
+  @@map("soul_journey_step_progress")
+}
+
+model RecoveryCase {
+  id           String              @id @default(uuid())
+  soulId       String
+  tenantId     String
+  reason       String
+  openedAt     DateTime            @default(now())
+  openedById   String
+  assignedToId String?
+  status       RecoveryCaseStatus  @default(OPEN)
+  decision     RecoveryDecision?
+  closedAt     DateTime?
+  closedById   String?
+  notes        String?
+
+  soul       NewVisitor  @relation(fields: [soulId], references: [id])
+  tenant     Tenant      @relation(fields: [tenantId], references: [id])
+  openedBy   User        @relation("CaseOpener", fields: [openedById], references: [id])
+  assignedTo User?       @relation("CaseAssignee", fields: [assignedToId], references: [id])
+  closedBy   User?       @relation("CaseCloser", fields: [closedById], references: [id])
+
+  @@index([tenantId])
+  @@index([soulId])
+  @@index([status])
+  @@map("recovery_cases")
+}
+
+model FollowUpTask {
+  id           String      @id @default(uuid())
+  tenantId     String
+  soulId       String
+  assignedToId String
+  type         TaskType    @default(CALL)
+  dueAt        DateTime
+  status       TaskStatus  @default(PENDING)
+  completedAt  DateTime?
+  notes        String?
+  createdById  String
+  createdAt    DateTime    @default(now())
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id])
+  soul       NewVisitor  @relation(fields: [soulId], references: [id])
+  assignedTo User        @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  createdBy  User        @relation("TaskCreator", fields: [createdById], references: [id])
+
+  @@index([tenantId])
+  @@index([soulId])
+  @@index([assignedToId])
+  @@index([dueAt])
+  @@index([status])
+  @@map("follow_up_tasks")
+}
+
+// ─── Portail public / QR Codes / Campagnes ──────────────────────────────────
+
+model PublicCampaign {
+  id          String            @id @default(uuid())
+  tenantId    String
+  title       String
+  description String?
+  type        CampaignType
+  status      CampaignStatus    @default(DRAFT)
+  scopeType   CampaignScopeType @default(ASSEMBLY)
+  scopeId     String?
+  settings    Json              @default("{}")
+  startsAt    DateTime?
+  endsAt      DateTime?
+  createdById String
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  deletedAt   DateTime?
+
+  tenant      Tenant                @relation("TenantCampaigns", fields: [tenantId], references: [id])
+  createdBy   User                  @relation("CampaignCreator", fields: [createdById], references: [id])
+  links       PublicLink[]
+  submissions PublicSubmission[]
+  metrics     PublicCampaignMetric[]
+  liveMoments LiveMoment[]           @relation("MomentCampaign")
+
+  @@index([tenantId, status])
+  @@index([tenantId, type])
+  @@index([deletedAt])
+  @@map("public_campaigns")
+}
+
+model PublicLink {
+  id         String     @id @default(uuid())
+  campaignId String
+  slug       String     @unique
+  source     LinkSource @default(DEFAULT)
+  label      String?
+  isActive   Boolean    @default(true)
+  expiresAt  DateTime?
+  scans      Int        @default(0)
+  createdAt  DateTime   @default(now())
+
+  campaign    PublicCampaign     @relation(fields: [campaignId], references: [id])
+  qrCodes     QrCodeAsset[]
+  submissions PublicSubmission[]
+
+  @@index([campaignId])
+  @@index([slug])
+  @@map("public_links")
+}
+
+model QrCodeAsset {
+  id            String   @id @default(uuid())
+  publicLinkId  String
+  format        QrFormat @default(PNG)
+  fileUrl       String
+  label         String?
+  designOptions Json     @default("{}")
+  createdAt     DateTime @default(now())
+
+  publicLink PublicLink @relation(fields: [publicLinkId], references: [id])
+
+  @@index([publicLinkId])
+  @@map("qr_code_assets")
+}
+
+model PublicSubmission {
+  id             String           @id @default(uuid())
+  tenantId       String
+  campaignId     String
+  publicLinkId   String?
+  submittedAt    DateTime         @default(now())
+  ipHash         String?
+  userAgent      String?
+  sourceMetadata Json             @default("{}")
+  payload        Json
+  status         SubmissionStatus @default(RECEIVED)
+  processedAt    DateTime?
+
+  campaign   PublicCampaign           @relation(fields: [campaignId], references: [id])
+  publicLink PublicLink?              @relation(fields: [publicLinkId], references: [id])
+  actions    PublicSubmissionAction[]
+
+  @@index([tenantId, campaignId])
+  @@index([tenantId, status])
+  @@index([submittedAt])
+  @@map("public_submissions")
+}
+
+model PublicSubmissionAction {
+  id               String                 @id @default(uuid())
+  submissionId     String
+  actionType       SubmissionActionType
+  targetEntityType String?
+  targetEntityId   String?
+  status           SubmissionActionStatus @default(PENDING)
+  errorMessage     String?
+  createdAt        DateTime               @default(now())
+
+  submission PublicSubmission @relation(fields: [submissionId], references: [id])
+
+  @@index([submissionId])
+  @@map("public_submission_actions")
+}
+
+model PublicCampaignMetric {
+  id                String   @id @default(uuid())
+  campaignId        String
+  date              DateTime @db.Date
+  views             Int      @default(0)
+  scans             Int      @default(0)
+  submissions       Int      @default(0)
+  successfulActions Int      @default(0)
+  completedPayments Int      @default(0)
+  totalAmount       Decimal  @default(0) @db.Decimal(15, 2)
+
+  campaign PublicCampaign @relation(fields: [campaignId], references: [id])
+
+  @@unique([campaignId, date])
+  @@index([campaignId])
+  @@map("public_campaign_metrics")
+}
+
+enum CampaignType {
+  DONATION
+  VISITOR_REGISTRATION
+  PRAYER_REQUEST
+  EVENT_REGISTRATION
+  VOLUNTEER_SIGNUP
+  MINISTRY_JOIN
+  CONTACT_REQUEST
+  CHECKIN
+  CUSTOM
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  EXPIRED
+  ARCHIVED
+}
+
+enum CampaignScopeType {
+  TENANT
+  REGION
+  DISTRICT
+  ASSEMBLY
+  EVENT
+  MINISTRY
+}
+
+enum LinkSource {
+  DEFAULT
+  YOUTUBE
+  FACEBOOK
+  INSTAGRAM
+  POSTER
+  WHATSAPP
+  EMAIL
+  WEBSITE
+  EVENT_SCREEN
+  OTHER
+}
+
+enum QrFormat {
+  PNG
+  SVG
+}
+
+enum SubmissionStatus {
+  RECEIVED
+  PROCESSING
+  PROCESSED
+  FAILED
+  SPAM
+}
+
+enum SubmissionActionType {
+  CREATE_DONATION
+  CREATE_NEW_VISITOR
+  CREATE_PRAYER_REQUEST
+  CREATE_EVENT_REGISTRATION
+  SEND_NOTIFICATION
+  CREATE_CONVERSATION
+  CREATE_FOLLOW_UP_TASK
+  UPDATE_MEMBER
+}
+
+enum SubmissionActionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+// ─── Live & Médias ───────────────────────────────────────────────────────────
+
+model LiveChannel {
+  id           String           @id @default(uuid())
+  tenantId     String
+  assemblyId   String?
+  name         String
+  provider     LiveProvider
+  streamUrl    String?
+  externalId   String?
+  embedCode    String?
+  isDefault    Boolean          @default(false)
+  isActive     Boolean          @default(true)
+  settings     Json             @default("{}")
+  createdById  String
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  tenant     Tenant        @relation("TenantLiveChannels", fields: [tenantId], references: [id])
+  assembly   Assembly?     @relation("AssemblyLiveChannels", fields: [assemblyId], references: [id])
+  createdBy  User          @relation("LiveChannelCreator", fields: [createdById], references: [id])
+  services   LiveService[]
+
+  @@index([tenantId, isActive])
+  @@index([assemblyId])
+  @@map("live_channels")
+}
+
+model LiveService {
+  id                    String            @id @default(uuid())
+  tenantId              String
+  assemblyId            String
+  channelId             String?
+  eventId               String?
+  title                 String
+  description           String?
+  type                  LiveServiceType   @default(SUNDAY_SERVICE)
+  status                LiveServiceStatus @default(DRAFT)
+  visibility            LiveVisibility    @default(PUBLIC)
+  slug                  String            @unique
+  thumbnailUrl          String?
+  provider              LiveProvider?
+  externalLiveId        String?
+  embedUrl              String?
+  scheduledStartAt      DateTime?
+  scheduledEndAt        DateTime?
+  actualStartAt         DateTime?
+  actualEndAt           DateTime?
+  allowChat             Boolean           @default(true)
+  allowPrayer           Boolean           @default(true)
+  allowDonations        Boolean           @default(true)
+  allowVisitorSignup    Boolean           @default(true)
+  allowSalvationDecision Boolean          @default(true)
+  viewCount             Int               @default(0)
+  peakViewerCount       Int               @default(0)
+  language              String?
+  tags                  String[]
+  createdById           String
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  deletedAt             DateTime?
+
+  tenant        Tenant              @relation("TenantLiveServices", fields: [tenantId], references: [id])
+  assembly      Assembly            @relation("AssemblyLiveServices", fields: [assemblyId], references: [id])
+  channel       LiveChannel?        @relation(fields: [channelId], references: [id])
+  event         Event?              @relation("EventLiveService", fields: [eventId], references: [id])
+  createdBy     User                @relation("LiveServiceCreator", fields: [createdById], references: [id])
+  chatMessages  LiveChatMessage[]
+  prayerRequests LivePrayerRequest[]
+  viewerSessions LiveViewerSession[]
+  moments       LiveMoment[]
+  engagements   LiveEngagementEvent[]
+  replays       MediaReplay[]
+  hosts         LiveHostAssignment[]
+
+  @@index([tenantId, status])
+  @@index([assemblyId, status])
+  @@index([scheduledStartAt])
+  @@index([deletedAt])
+  @@map("live_services")
+}
+
+model LiveHostAssignment {
+  id          String       @id @default(uuid())
+  serviceId   String
+  userId      String
+  role        LiveHostRole @default(MODERATOR)
+  assignedAt  DateTime     @default(now())
+
+  service LiveService @relation(fields: [serviceId], references: [id])
+  user    User        @relation("LiveHostAssignments", fields: [userId], references: [id])
+
+  @@unique([serviceId, userId])
+  @@index([serviceId])
+  @@map("live_host_assignments")
+}
+
+model LiveChatMessage {
+  id          String               @id @default(uuid())
+  serviceId   String
+  userId      String?
+  guestName   String?
+  content     String
+  status      LiveChatMessageStatus @default(ACTIVE)
+  isPinned    Boolean              @default(false)
+  isSystem    Boolean              @default(false)
+  parentId    String?
+  createdAt   DateTime             @default(now())
+  deletedAt   DateTime?
+
+  service     LiveService      @relation(fields: [serviceId], references: [id])
+  user        User?            @relation("LiveChatUser", fields: [userId], references: [id])
+  parent      LiveChatMessage? @relation("ChatReplies", fields: [parentId], references: [id])
+  replies     LiveChatMessage[] @relation("ChatReplies")
+
+  @@index([serviceId, createdAt])
+  @@index([serviceId, status])
+  @@map("live_chat_messages")
+}
+
+model LivePrayerRequest {
+  id              String            @id @default(uuid())
+  serviceId       String
+  tenantId        String
+  firstName       String?
+  prayerSubject   String
+  phone           String?
+  email           String?
+  confidentiality String            @default("TEAM")
+  wantsContact    Boolean           @default(false)
+  status          LivePrayerStatus  @default(PENDING)
+  assignedToId    String?
+  assignedAt      DateTime?
+  closedAt        DateTime?
+  notes           String?
+  createdAt       DateTime          @default(now())
+
+  service     LiveService @relation(fields: [serviceId], references: [id])
+  assignedTo  User?       @relation("PrayerAssignee", fields: [assignedToId], references: [id])
+
+  @@index([serviceId, status])
+  @@index([tenantId])
+  @@map("live_prayer_requests")
+}
+
+model LiveViewerSession {
+  id          String    @id @default(uuid())
+  serviceId   String
+  userId      String?
+  guestToken  String?
+  enteredAt   DateTime  @default(now())
+  leftAt      DateTime?
+  durationSec Int?
+  device      String?
+  source      String?
+
+  service LiveService @relation(fields: [serviceId], references: [id])
+  user    User?       @relation("ViewerSessions", fields: [userId], references: [id])
+
+  @@index([serviceId])
+  @@index([serviceId, enteredAt])
+  @@map("live_viewer_sessions")
+}
+
+model LiveMoment {
+  id            String              @id @default(uuid())
+  serviceId     String
+  type          LiveMomentType
+  title         String
+  message       String?
+  buttonText    String?
+  actionUrl     String?
+  campaignId    String?
+  triggerMode   LiveMomentTrigger   @default(MANUAL)
+  scheduledAt   DateTime?
+  displayedAt   DateTime?
+  hiddenAt      DateTime?
+  durationSec   Int?
+  impressions   Int                 @default(0)
+  clicks        Int                 @default(0)
+  isActive      Boolean             @default(false)
+  createdAt     DateTime            @default(now())
+
+  service  LiveService    @relation(fields: [serviceId], references: [id])
+  campaign PublicCampaign? @relation("MomentCampaign", fields: [campaignId], references: [id])
+
+  @@index([serviceId])
+  @@index([serviceId, isActive])
+  @@map("live_moments")
+}
+
+model LiveEngagementEvent {
+  id          String                  @id @default(uuid())
+  serviceId   String
+  userId      String?
+  type        LiveEngagementEventType
+  metadata    Json                    @default("{}")
+  createdAt   DateTime                @default(now())
+
+  service LiveService @relation(fields: [serviceId], references: [id])
+  user    User?       @relation("LiveEngagements", fields: [userId], references: [id])
+
+  @@index([serviceId, type])
+  @@index([serviceId, createdAt])
+  @@map("live_engagement_events")
+}
+
+model MediaReplay {
+  id            String          @id @default(uuid())
+  tenantId      String
+  assemblyId    String?
+  serviceId     String?
+  title         String
+  description   String?
+  thumbnailUrl  String?
+  videoUrl      String
+  provider      LiveProvider?
+  externalId    String?
+  preacher      String?
+  series        String?
+  tags          String[]
+  verseRefs     String[]
+  durationSec   Int?
+  visibility    ReplayVisibility @default(MEMBERS_ONLY)
+  publishedAt   DateTime?
+  viewCount     Int              @default(0)
+  notes         String?
+  createdById   String
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  deletedAt     DateTime?
+
+  tenant    Tenant       @relation("TenantReplays", fields: [tenantId], references: [id])
+  assembly  Assembly?    @relation("AssemblyReplays", fields: [assemblyId], references: [id])
+  service   LiveService? @relation(fields: [serviceId], references: [id])
+  createdBy User         @relation("ReplayCreator", fields: [createdById], references: [id])
+
+  @@index([tenantId, visibility])
+  @@index([assemblyId])
+  @@index([serviceId])
+  @@index([deletedAt])
+  @@map("media_replays")
+}
+
+// ─── Enums Live ───────────────────────────────────────────────────────────────
+
+enum LiveProvider {
+  YOUTUBE
+  VIMEO
+  FACEBOOK
+  CUSTOM_EMBED
+  OTHER
+}
+
+enum LiveServiceStatus {
+  DRAFT
+  SCHEDULED
+  READY
+  LIVE
+  ENDED
+  CANCELLED
+  ARCHIVED
+}
+
+enum LiveServiceType {
+  SUNDAY_SERVICE
+  PRAYER
+  CONFERENCE
+  SEMINAR
+  YOUTH
+  SPECIAL
+  OTHER
+}
+
+enum LiveVisibility {
+  PUBLIC
+  MEMBERS_ONLY
+  ASSEMBLY_ONLY
+  PRIVATE
+}
+
+enum LiveMomentType {
+  NEW_VISITOR
+  DONATION
+  PRAYER
+  SALVATION_DECISION
+  EVENT_REGISTRATION
+  SHARE
+  CONTACT_REQUEST
+  CUSTOM
+}
+
+enum LiveMomentTrigger {
+  MANUAL
+  SCHEDULED
+}
+
+enum LivePrayerStatus {
+  PENDING
+  ASSIGNED
+  IN_PROGRESS
+  CLOSED
+  FOLLOW_UP_REQUIRED
+}
+
+enum LiveChatMessageStatus {
+  ACTIVE
+  HIDDEN
+  DELETED
+  FLAGGED
+}
+
+enum LiveHostRole {
+  HOST
+  MODERATOR
+  PASTOR
+}
+
+enum ReplayVisibility {
+  PUBLIC
+  MEMBERS_ONLY
+  ASSEMBLY_ONLY
+  PRIVATE
+}
+
+enum LiveEngagementEventType {
+  REACTION_AMEN
+  REACTION_PRAYER
+  REACTION_HEART
+  CTA_CLICK
+  DONATION_INITIATED
+  VISITOR_SIGNUP
+  SALVATION_DECISION
+  PRAYER_REQUEST
+  SHARE
+  CHAT_MESSAGE
+}
