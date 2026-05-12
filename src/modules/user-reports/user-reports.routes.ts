@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate } from '../../middlewares/auth.middleware';
-import { requirePermission, isSuperAdmin } from '../../middlewares/rbac.middleware';
+import { requirePermission, isSuperAdmin, userHasPermission } from '../../middlewares/rbac.middleware';
 import { validate } from '../../middlewares/validate.middleware';
 import { PERMISSIONS } from '../../shared/constants/permissions';
 import { prisma } from '../../database/prisma';
@@ -10,6 +10,7 @@ import { NotFoundError } from '../../middlewares/error.middleware';
 import { createAuditLog } from '../../utils/audit.util';
 import { emailService } from '../../services/email.service';
 import { config } from '../../config';
+import type { AuthUser } from '../../shared/types/express';
 
 // ─── Local enum types (mirrors prisma schema — avoids regeneration requirement) ─
 
@@ -92,6 +93,10 @@ async function sendReportAlertEmail(
 const router = Router();
 router.use(authenticate);
 
+function canManageUserReports(user: AuthUser): boolean {
+  return isSuperAdmin(user) || userHasPermission(user, PERMISSIONS.USER_REPORTS_READ);
+}
+
 // ── POST / — Creer un signalement (tout utilisateur connecte) ─────────────────
 router.post('/', validate(createReportSchema), async (req, res, next) => {
   try {
@@ -134,15 +139,19 @@ router.post('/', validate(createReportSchema), async (req, res, next) => {
 });
 
 // ── GET / — Liste des signalements (super_admin seulement) ───────────────────
-router.get('/', requirePermission(PERMISSIONS.USER_REPORTS_READ), async (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
     const { status, severity, appModule, search } = req.query as Record<string, string>;
     const { page, limit, skip } = req.pagination!;
 
-    // Isolation: super_admin voit tout, sinon uniquement le tenant
+    // Isolation:
+    // - super_admin: tous les tenants
+    // - role user_reports:read: son tenant
+    // - utilisateur standard/mobile: uniquement ses propres signalements
+    const canManage = canManageUserReports(req.user!);
     const scopeFilter = isSuperAdmin(req.user!)
       ? {}
-      : req.user!.tenantId
+      : canManage && req.user!.tenantId
       ? { tenantId: req.user!.tenantId }
       : { userId: req.user!.id };
 
@@ -212,10 +221,18 @@ router.get('/stats', requirePermission(PERMISSIONS.USER_REPORTS_READ), async (_r
 });
 
 // ── GET /:id — Detail d'un signalement (super_admin) ─────────────────────────
-router.get('/:id', requirePermission(PERMISSIONS.USER_REPORTS_READ), async (req, res, next) => {
+router.get('/:id', async (req, res, next) => {
   try {
-    const report = await (prisma as any).userReport.findUnique({
-      where: { id: req.params['id'] },
+    const canManage = canManageUserReports(req.user!);
+    const report = await (prisma as any).userReport.findFirst({
+      where: {
+        id: req.params['id'],
+        ...(isSuperAdmin(req.user!)
+          ? {}
+          : canManage && req.user!.tenantId
+          ? { tenantId: req.user!.tenantId }
+          : { userId: req.user!.id }),
+      },
       include: {
         user: { select: { id: true, firstName: true, lastName: true, email: true } },
       },

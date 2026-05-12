@@ -45,23 +45,82 @@ export interface LoginResult extends AuthTokens {
       status: string;
       plan?: { code: string; name: string } | null;
     } | null;
-    roles: Array<{ name: string; level: number }>;
+    roles: AuthRolePayload[];
   };
 }
 
-type ScopedRoleSummary = { name: string; level: number };
+type AuthRolePayload = {
+  id: string;
+  tenantId: string | null;
+  regionId: string | null;
+  districtId: string | null;
+  assemblyId: string | null;
+  ministryId: string | null;
+  expiresAt: Date | null;
+  assignedBy: string | null;
+  role: {
+    id: string;
+    name: string;
+    displayName: string;
+    description: string | null;
+    level: number;
+    rolePermissions: Array<{
+      permission: {
+        id: string;
+        name: string;
+        displayName: string;
+        module: string;
+        action: string;
+      };
+    }>;
+  };
+};
 
-function mapRoleSummaries(
+function mapAuthRoles(
   userRoles: Array<{
+    id: string;
+    tenantId: string | null;
+    regionId: string | null;
+    districtId: string | null;
+    assemblyId: string | null;
+    ministryId: string | null;
+    expiresAt: Date | null;
+    assignedBy: string | null;
     role: {
+      id: string;
       name: string;
+      displayName: string;
+      description: string | null;
       level: number;
+      rolePermissions: Array<{
+        permission: {
+          id: string;
+          name: string;
+          displayName: string;
+          module: string;
+          action: string;
+        };
+      }>;
     };
   }>
-): ScopedRoleSummary[] {
+): AuthRolePayload[] {
   return userRoles.map((userRole) => ({
-    name: userRole.role.name,
-    level: userRole.role.level,
+    id: userRole.id,
+    tenantId: userRole.tenantId,
+    regionId: userRole.regionId,
+    districtId: userRole.districtId,
+    assemblyId: userRole.assemblyId,
+    ministryId: userRole.ministryId,
+    expiresAt: userRole.expiresAt,
+    assignedBy: userRole.assignedBy,
+    role: {
+      id: userRole.role.id,
+      name: userRole.role.name,
+      displayName: userRole.role.displayName,
+      description: userRole.role.description,
+      level: userRole.role.level,
+      rolePermissions: userRole.role.rolePermissions,
+    },
   }));
 }
 
@@ -116,14 +175,26 @@ export class AuthService {
           },
         },
         userRoles: {
-          include: { role: true },
+          include: {
+            role: {
+              include: {
+                rolePermissions: {
+                  include: { permission: true },
+                },
+              },
+            },
+          },
         },
       },
     });
 
     if (!user) {
       // Dummy verify to equalise response time regardless of whether the email exists
-      await verifyPassword(await DUMMY_HASH_PROMISE, dto.password).catch(() => {});
+      try {
+        await verifyPassword(await DUMMY_HASH_PROMISE, dto.password);
+      } catch {
+        // Ignore dummy hash errors; the observable response must stay generic.
+      }
       throw new AppError('Email ou mot de passe incorrect', 401, 'INVALID_CREDENTIALS');
     }
 
@@ -182,7 +253,7 @@ export class AuthService {
               plan: user.tenant.subscriptions[0]?.plan ?? null,
             }
           : null,
-        roles: mapRoleSummaries(user.userRoles),
+        roles: mapAuthRoles(user.userRoles),
       },
     };
   }
@@ -455,8 +526,21 @@ export class AuthService {
                 id: true,
                 name: true,
                 displayName: true,
+                description: true,
                 level: true,
-                rolePermissions: { select: { permission: { select: { id: true, name: true } } } },
+                rolePermissions: {
+                  select: {
+                    permission: {
+                      select: {
+                        id: true,
+                        name: true,
+                        displayName: true,
+                        module: true,
+                        action: true,
+                      },
+                    },
+                  },
+                },
               },
             },
             tenant: { select: { id: true, name: true, slug: true } },
@@ -478,7 +562,7 @@ export class AuthService {
             subscriptions: undefined,
           }
         : null,
-      roles: mapRoleSummaries(user.userRoles),
+      roles: mapAuthRoles(user.userRoles),
     };
   }
 

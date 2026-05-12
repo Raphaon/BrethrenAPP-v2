@@ -109,7 +109,7 @@ router.post('/', requirePermission(PERMISSIONS.MEMBERS_WRITE), validate(createGr
     // Vérification limite plan
     const tenantId = await planLimitService.resolveTenantIdFromAssembly(dto.assemblyId);
     const usage = await planLimitService.getTenantUsage(tenantId);
-    await planLimitService.assertCanCreate(tenantId, 'maxGroups', usage.assemblies, 'groupes');
+    await planLimitService.assertCanCreate(tenantId, 'maxGroups', usage.groups, 'groupes');
 
     const group = await prisma.groups.create({
       data: { id: crypto.randomUUID(), updatedAt: new Date(), ...dto },

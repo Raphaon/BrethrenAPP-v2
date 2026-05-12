@@ -53,6 +53,27 @@ const router = Router();
 router.use(authenticate);
 router.use('/:id/comments', requirePermission(PERMISSIONS.EVENTS_READ), createCommentsRouter('event'));
 
+function assertEventTargetShape(input: z.infer<typeof createEventSchema>) {
+  if (input.level === 'NATIONAL') {
+    if (input.regionId || input.districtId || input.assemblyId) {
+      throw new AppError('Un evenement national ne doit pas cibler une entite locale', 400, 'INVALID_SCOPE');
+    }
+    return;
+  }
+
+  if (input.level === 'REGIONAL' && !input.regionId) {
+    throw new AppError('Choisissez une region pour cet evenement', 400, 'REGION_REQUIRED');
+  }
+
+  if (input.level === 'DISTRICT' && !input.districtId) {
+    throw new AppError('Choisissez un district pour cet evenement', 400, 'DISTRICT_REQUIRED');
+  }
+
+  if (input.level === 'ASSEMBLY' && !input.assemblyId) {
+    throw new AppError('Choisissez une assemblee pour cet evenement', 400, 'ASSEMBLY_REQUIRED');
+  }
+}
+
 router.get('/', requirePermission(PERMISSIONS.EVENTS_READ), async (req, res, next) => {
   try {
     const { search, level, status, assemblyId, districtId, regionId, from, to } = req.query as Record<string, string>;
@@ -118,6 +139,7 @@ router.get('/:id', requirePermission(PERMISSIONS.EVENTS_READ), async (req, res, 
 router.post('/', requirePermission(PERMISSIONS.EVENTS_WRITE), validate(createEventSchema), async (req, res, next) => {
   try {
     const dto = req.body as z.infer<typeof createEventSchema>;
+    assertEventTargetShape(dto);
     assertEntityMatchesScope(dto);
     await assertEventTargetScope(req.user!, dto);
 

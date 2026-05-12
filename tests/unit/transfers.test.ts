@@ -2,10 +2,39 @@ import { TransfersService } from '../../src/modules/transfers/transfers.service'
 import { prismaMock } from '../helpers/test-setup';
 import { AppError } from '../../src/middlewares/error.middleware';
 import { Request } from 'express';
+import type { AuthUser } from '../../src/shared/types/express';
 
 jest.mock('../../src/utils/audit.util', () => ({ createAuditLog: jest.fn() }));
 
 const mockReq = { ip: '127.0.0.1', get: () => 'jest-agent' } as unknown as Request;
+const mockUser = {
+  id: 'user-1',
+  tenantId: 'tenant-1',
+  email: 'user@test.local',
+  firstName: 'Test',
+  lastName: 'User',
+  status: 'ACTIVE',
+  roles: [
+    {
+      role: {
+        id: 'role-1',
+        name: 'super_admin',
+        displayName: 'Super Admin',
+        level: 1,
+        isSystem: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        description: null,
+        rolePermissions: [],
+      },
+      tenantId: null,
+      regionId: null,
+      districtId: null,
+      assemblyId: null,
+      ministryId: null,
+    },
+  ],
+} satisfies AuthUser;
 
 describe('TransfersService', () => {
   let transfersService: TransfersService;
@@ -21,7 +50,7 @@ describe('TransfersService', () => {
       await expect(
         transfersService.create(
           { memberId: 'mem-1', toAssemblyId: 'asm-2', reason: 'Déménagement' },
-          'user-1',
+          mockUser,
           mockReq
         )
       ).rejects.toMatchObject({ code: 'NOT_FOUND' } satisfies Partial<AppError>);
@@ -39,7 +68,7 @@ describe('TransfersService', () => {
       await expect(
         transfersService.create(
           { memberId: 'mem-1', toAssemblyId: 'asm-1', reason: 'Test' },
-          'user-1',
+          mockUser,
           mockReq
         )
       ).rejects.toMatchObject({ code: 'SAME_ASSEMBLY' });
@@ -55,7 +84,7 @@ describe('TransfersService', () => {
       await expect(
         transfersService.create(
           { memberId: 'mem-1', toAssemblyId: 'asm-2', reason: 'Test' },
-          'user-1',
+          mockUser,
           mockReq
         )
       ).rejects.toMatchObject({ code: 'PENDING_TRANSFER_EXISTS' });

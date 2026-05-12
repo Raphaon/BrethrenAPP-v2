@@ -1,7 +1,5 @@
 import 'dotenv/config';
 import * as argon2 from 'argon2';
-import pg from 'pg';
-import { PrismaPg } from '@prisma/adapter-pg';
 import {
   AuditAction,
   CommentTargetType,
@@ -11,11 +9,7 @@ import {
   PrismaClient,
 } from '@prisma/client';
 
-const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL,
-});
-const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
+const prisma = new PrismaClient();
 
 type ScopeIds = {
   tenantId?: string | null;
@@ -383,6 +377,35 @@ async function main() {
     { name: 'territory_accounts:read', displayName: 'Lire les comptes territoire', module: 'territory_accounts', action: 'read' },
     { name: 'territory_accounts:write', displayName: 'Gérer les comptes territoire', module: 'territory_accounts', action: 'write' },
     { name: 'territory_accounts:delete', displayName: 'Supprimer les comptes territoire', module: 'territory_accounts', action: 'delete' },
+    { name: 'live_channels:create', displayName: 'Creer des sources live', module: 'live', action: 'create' },
+    { name: 'live_channels:read', displayName: 'Lire les sources live', module: 'live', action: 'read' },
+    { name: 'live_channels:update', displayName: 'Modifier les sources live', module: 'live', action: 'update' },
+    { name: 'live_channels:delete', displayName: 'Desactiver les sources live', module: 'live', action: 'delete' },
+    { name: 'live_services:create', displayName: 'Creer des services live', module: 'live', action: 'create' },
+    { name: 'live_services:read', displayName: 'Lire les services live', module: 'live', action: 'read' },
+    { name: 'live_services:update', displayName: 'Modifier les services live', module: 'live', action: 'update' },
+    { name: 'live_services:publish', displayName: 'Publier les services live', module: 'live', action: 'publish' },
+    { name: 'live_services:delete', displayName: 'Archiver les services live', module: 'live', action: 'delete' },
+    { name: 'live_hosts:manage', displayName: 'Gerer les hotes live', module: 'live', action: 'manage' },
+    { name: 'live_chat:moderate', displayName: 'Moderer le chat live', module: 'live', action: 'moderate' },
+    { name: 'live_moments:manage', displayName: 'Gerer les moments live', module: 'live', action: 'manage' },
+    { name: 'live_prayer:manage', displayName: 'Gerer les prieres live', module: 'live', action: 'manage' },
+    { name: 'live_replays:manage', displayName: 'Gerer les replays', module: 'live', action: 'manage' },
+    { name: 'live_analytics:read', displayName: 'Lire les statistiques live', module: 'live', action: 'read' },
+    { name: 'live_settings:manage', displayName: 'Gerer les reglages live', module: 'live', action: 'manage' },
+    { name: 'public_campaigns:create', displayName: 'Creer des campagnes portail', module: 'public_portal', action: 'create' },
+    { name: 'public_campaigns:read', displayName: 'Lire les campagnes portail', module: 'public_portal', action: 'read' },
+    { name: 'public_campaigns:update', displayName: 'Modifier les campagnes portail', module: 'public_portal', action: 'update' },
+    { name: 'public_campaigns:activate', displayName: 'Activer les campagnes portail', module: 'public_portal', action: 'activate' },
+    { name: 'public_campaigns:delete', displayName: 'Archiver les campagnes portail', module: 'public_portal', action: 'delete' },
+    { name: 'public_links:create', displayName: 'Creer des liens portail', module: 'public_portal', action: 'create' },
+    { name: 'public_links:read', displayName: 'Lire les liens portail', module: 'public_portal', action: 'read' },
+    { name: 'public_qr_codes:generate', displayName: 'Generer des QR codes portail', module: 'public_portal', action: 'generate' },
+    { name: 'public_submissions:read', displayName: 'Lire les soumissions portail', module: 'public_portal', action: 'read' },
+    { name: 'public_submissions:export', displayName: 'Exporter les soumissions portail', module: 'public_portal', action: 'export' },
+    { name: 'public_forms:manage', displayName: 'Gerer les formulaires portail', module: 'public_portal', action: 'manage' },
+    { name: 'public_analytics:read', displayName: 'Lire les analytics portail', module: 'public_portal', action: 'read' },
+    { name: 'public_settings:manage', displayName: 'Gerer les reglages portail', module: 'public_portal', action: 'manage' },
   ];
 
   console.log('  Syncing permissions...');
@@ -398,6 +421,35 @@ async function main() {
   const permissionByName = new Map(allPermissions.map((permission) => [permission.name, permission.id]));
   const pickPermissions = (names: string[]) => names.flatMap((name) => (permissionByName.has(name) ? [permissionByName.get(name)!] : []));
   const allPermissionIds = allPermissions.map((permission) => permission.id);
+
+  const liveReadPermissionNames = [
+    'live_channels:read',
+    'live_services:read',
+    'live_analytics:read',
+  ];
+
+  const liveOperationalPermissionNames = [
+    'live_channels:create', 'live_channels:read', 'live_channels:update', 'live_channels:delete',
+    'live_services:create', 'live_services:read', 'live_services:update', 'live_services:publish', 'live_services:delete',
+    'live_hosts:manage', 'live_chat:moderate', 'live_moments:manage', 'live_prayer:manage',
+    'live_replays:manage', 'live_analytics:read', 'live_settings:manage',
+  ];
+
+  const publicPortalReadPermissionNames = [
+    'public_campaigns:read',
+    'public_links:read',
+    'public_qr_codes:generate',
+    'public_submissions:read',
+    'public_analytics:read',
+  ];
+
+  const publicPortalOperationalPermissionNames = [
+    'public_campaigns:create', 'public_campaigns:read', 'public_campaigns:update', 'public_campaigns:activate', 'public_campaigns:delete',
+    'public_links:create', 'public_links:read',
+    'public_qr_codes:generate',
+    'public_submissions:read', 'public_submissions:export',
+    'public_forms:manage', 'public_analytics:read', 'public_settings:manage',
+  ];
 
   const regionalPermissionNames = [
     'regions:read',
@@ -416,6 +468,8 @@ async function main() {
     'transfers:read', 'transfers:approve', 'transfers:reject',
     'notifications:read', 'statistics:read', 'audit_logs:read',
     'territory_accounts:read', 'territory_accounts:write',
+    ...liveReadPermissionNames,
+    ...publicPortalReadPermissionNames,
   ];
 
   const districtPermissionNames = [
@@ -434,6 +488,8 @@ async function main() {
     'transfers:read', 'transfers:approve', 'transfers:reject',
     'notifications:read', 'statistics:read',
     'territory_accounts:read', 'territory_accounts:write',
+    ...liveReadPermissionNames,
+    ...publicPortalReadPermissionNames,
     'souls:read', 'fd:read', 'consolidation_reports:read',
   ];
 
@@ -448,6 +504,8 @@ async function main() {
     'transfers:read', 'transfers:request',
     'notifications:read', 'statistics:read',
     'territory_accounts:read', 'territory_accounts:write',
+    ...liveOperationalPermissionNames,
+    ...publicPortalOperationalPermissionNames,
     'souls:read', 'souls:write', 'souls:assign', 'souls:archive',
     'fd:read', 'fd:write', 'fd:manage',
     'disciple_makers:manage',
@@ -665,8 +723,8 @@ async function main() {
   for (const plan of planDefinitions) {
     await prisma.plan.upsert({
       where: { code: plan.code },
-      update: plan,
-      create: plan,
+      update: { ...plan, updatedAt: new Date() },
+      create: { id: crypto.randomUUID(), updatedAt: new Date(), ...plan },
     });
   }
 
@@ -682,6 +740,8 @@ async function main() {
       status: 'ACTIVE',
     },
     create: {
+      id: crypto.randomUUID(),
+      updatedAt: new Date(),
       name: 'Mission du Plein Evangile au Cameroun',
       slug: 'mpe-cameroun',
       country: 'CM',
@@ -689,15 +749,21 @@ async function main() {
       language: 'fr',
       timezone: 'Africa/Douala',
       status: 'ACTIVE',
-      settings: { create: { contactEmail: 'admin@mpe-cameroun.org' } },
+      tenantSettings: { create: { id: crypto.randomUUID(), updatedAt: new Date(), contactEmail: 'admin@mpe-cameroun.org' } },
     },
   });
 
-  await prisma.subscription.upsert({
-    where: { tenantId: defaultTenant.id },
-    update: { planId: premiumPlan.id, status: 'ACTIVE' },
-    create: { tenantId: defaultTenant.id, planId: premiumPlan.id, status: 'ACTIVE' },
-  });
+  const existingSubscription = await prisma.subscription.findFirst({ where: { tenantId: defaultTenant.id } });
+  if (existingSubscription) {
+    await prisma.subscription.update({
+      where: { id: existingSubscription.id },
+      data: { planId: premiumPlan.id, status: 'ACTIVE', updatedAt: new Date() },
+    });
+  } else {
+    await prisma.subscription.create({
+      data: { id: crypto.randomUUID(), updatedAt: new Date(), tenantId: defaultTenant.id, planId: premiumPlan.id, status: 'ACTIVE' },
+    });
+  }
 
   console.log('  Creating geography...');
 
@@ -1707,10 +1773,12 @@ async function main() {
   // ═══════════════════════════════════════════════════════════════════════════
   console.log('  Creating groups...');
 
-  const cellGroup1 = await prisma.group.upsert({
+  const cellGroup1 = await prisma.groups.upsert({
     where: { name_assemblyId: { name: 'Cellule Biyem-Assi', assemblyId: assemblyYaoundeCentral.id } },
     update: {},
     create: {
+      id: crypto.randomUUID(),
+      updatedAt: new Date(),
       name: 'Cellule Biyem-Assi',
       assemblyId: assemblyYaoundeCentral.id,
       type: 'CELL_GROUP',
@@ -1721,10 +1789,12 @@ async function main() {
     },
   });
 
-  const cellGroup2 = await prisma.group.upsert({
+  const cellGroup2 = await prisma.groups.upsert({
     where: { name_assemblyId: { name: 'Cellule Bastos', assemblyId: assemblyYaoundeCentral.id } },
     update: {},
     create: {
+      id: crypto.randomUUID(),
+      updatedAt: new Date(),
       name: 'Cellule Bastos',
       assemblyId: assemblyYaoundeCentral.id,
       type: 'CELL_GROUP',
@@ -1735,10 +1805,12 @@ async function main() {
     },
   });
 
-  const bibleStudyGroup = await prisma.group.upsert({
+  const bibleStudyGroup = await prisma.groups.upsert({
     where: { name_assemblyId: { name: 'Étude Biblique Centrale', assemblyId: assemblyYaoundeCentral.id } },
     update: {},
     create: {
+      id: crypto.randomUUID(),
+      updatedAt: new Date(),
       name: 'Étude Biblique Centrale',
       assemblyId: assemblyYaoundeCentral.id,
       type: 'BIBLE_STUDY',
@@ -1749,10 +1821,12 @@ async function main() {
     },
   });
 
-  const prayerCell = await prisma.group.upsert({
+  const prayerCell = await prisma.groups.upsert({
     where: { name_assemblyId: { name: 'Cellule de Prière Bonaberi', assemblyId: assemblyDoualaBonaberi.id } },
     update: {},
     create: {
+      id: crypto.randomUUID(),
+      updatedAt: new Date(),
       name: 'Cellule de Prière Bonaberi',
       assemblyId: assemblyDoualaBonaberi.id,
       type: 'PRAYER_CELL',
@@ -1776,10 +1850,10 @@ async function main() {
   ];
 
   for (const gm of groupMemberships) {
-    await prisma.groupMember.upsert({
+    await prisma.group_members.upsert({
       where: { groupId_memberId: { groupId: gm.groupId, memberId: gm.memberId } },
-      update: { role: gm.role, status: 'ACTIVE' },
-      create: { ...gm, status: 'ACTIVE' },
+      update: { role: gm.role, status: 'ACTIVE', updatedAt: new Date() },
+      create: { id: crypto.randomUUID(), updatedAt: new Date(), ...gm, status: 'ACTIVE' },
     });
   }
 
@@ -1788,11 +1862,12 @@ async function main() {
   // ═══════════════════════════════════════════════════════════════════════════
   console.log('  Creating programs...');
 
-  const sundayService = await prisma.program.upsert({
+  const sundayService = await prisma.programs.upsert({
     where: { id: 'prog-sunday-central' },
     update: {},
     create: {
       id: 'prog-sunday-central',
+      updatedAt: new Date(),
       name: 'Culte du Dimanche',
       assemblyId: assemblyYaoundeCentral.id,
       ministryId: choirMinistry.id,
@@ -1805,11 +1880,12 @@ async function main() {
     },
   });
 
-  const wednesdayPrayer = await prisma.program.upsert({
+  const wednesdayPrayer = await prisma.programs.upsert({
     where: { id: 'prog-prayer-central' },
     update: {},
     create: {
       id: 'prog-prayer-central',
+      updatedAt: new Date(),
       name: 'Prière du Mercredi',
       assemblyId: assemblyYaoundeCentral.id,
       frequency: 'WEEKLY',
@@ -1821,11 +1897,12 @@ async function main() {
     },
   });
 
-  await prisma.program.upsert({
+  await prisma.programs.upsert({
     where: { id: 'prog-youth-central' },
     update: {},
     create: {
       id: 'prog-youth-central',
+      updatedAt: new Date(),
       name: 'Réunion des Jeunes',
       assemblyId: assemblyYaoundeCentral.id,
       ministryId: youthMinistry.id,
@@ -1838,11 +1915,12 @@ async function main() {
     },
   });
 
-  await prisma.program.upsert({
+  await prisma.programs.upsert({
     where: { id: 'prog-sunday-bonaberi' },
     update: {},
     create: {
       id: 'prog-sunday-bonaberi',
+      updatedAt: new Date(),
       name: 'Culte du Dimanche',
       assemblyId: assemblyDoualaBonaberi.id,
       frequency: 'WEEKLY',
@@ -1866,11 +1944,12 @@ async function main() {
   const lastSunday = new Date(nextSunday);
   lastSunday.setDate(lastSunday.getDate() - 7);
 
-  const servicePlan1 = await prisma.servicePlan.upsert({
+  const servicePlan1 = await prisma.service_plans.upsert({
     where: { id: 'sp-next-sunday' },
     update: {},
     create: {
       id: 'sp-next-sunday',
+      updatedAt: new Date(),
       title: `Culte du ${nextSunday.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}`,
       assemblyId: assemblyYaoundeCentral.id,
       programId: sundayService.id,
@@ -1883,11 +1962,12 @@ async function main() {
     },
   });
 
-  await prisma.servicePlan.upsert({
+  await prisma.service_plans.upsert({
     where: { id: 'sp-last-sunday' },
     update: {},
     create: {
       id: 'sp-last-sunday',
+      updatedAt: new Date(),
       title: `Culte du ${lastSunday.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}`,
       assemblyId: assemblyYaoundeCentral.id,
       programId: sundayService.id,
@@ -1900,11 +1980,12 @@ async function main() {
     },
   });
 
-  const draftPlan = await prisma.servicePlan.upsert({
+  const draftPlan = await prisma.service_plans.upsert({
     where: { id: 'sp-prayer-next' },
     update: {},
     create: {
       id: 'sp-prayer-next',
+      updatedAt: new Date(),
       title: 'Prière du Mercredi prochain',
       assemblyId: assemblyYaoundeCentral.id,
       programId: wednesdayPrayer.id,
@@ -1926,10 +2007,10 @@ async function main() {
   ];
 
   for (const sa of serviceAssignments) {
-    await prisma.serviceAssignment.upsert({
+    await prisma.service_assignments.upsert({
       where: { servicePlanId_userId_role: { servicePlanId: sa.servicePlanId, userId: sa.userId, role: sa.role } },
-      update: { status: sa.status },
-      create: { ...sa },
+      update: { status: sa.status, updatedAt: new Date() },
+      create: { id: crypto.randomUUID(), updatedAt: new Date(), ...sa },
     });
   }
 
@@ -1960,8 +2041,8 @@ async function main() {
   ];
 
   for (const rec of attendanceRecords) {
-    await prisma.attendance.create({
-      data: { ...rec, takenById: users.assemblyAdmin.id },
+    await prisma.attendances.create({
+      data: { id: crypto.randomUUID(), ...rec, takenById: users.assemblyAdmin.id },
     }).catch(() => { /* ignorer les doublons */ });
   }
 

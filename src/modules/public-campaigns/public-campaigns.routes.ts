@@ -11,6 +11,8 @@ import { prisma } from '../../database/prisma';
 import { sendSuccess, sendCreated, sendPaginated, buildPaginationMeta } from '../../utils/response.util';
 import { createAuditLog } from '../../utils/audit.util';
 import { NotFoundError, AppError } from '../../middlewares/error.middleware';
+import { assertAssemblyAccess, assertDistrictAccess, assertRegionAccess, getActorScope } from '../../utils/scope-access.util';
+import type { AuthUser } from '../../shared/types/express';
 
 const router = Router();
 router.use(authenticate);
@@ -57,6 +59,231 @@ function generateSlug(tenantSlug?: string): string {
   return tenantSlug ? `${tenantSlug}-${rand}` : rand;
 }
 
+async function assertCampaignScopeAccess(
+  user: AuthUser,
+  input: { scopeType?: string; scopeId?: string },
+) {
+  const actorScope = await getActorScope(user);
+  const scopeType = input.scopeType ?? 'ASSEMBLY';
+  const scopeId = input.scopeId;
+
+  if (scopeType === 'TENANT') {
+    if (scopeId) {
+      throw new AppError('Une campagne organisation ne doit pas cibler une entite locale', 400, 'INVALID_SCOPE');
+    }
+    if (actorScope.kind === 'platform' || actorScope.kind === 'tenant') {
+      return;
+    }
+    throw new AppError('Acces au niveau organisation refuse', 403, 'SCOPE_DENIED');
+  }
+
+  if (actorScope.kind === 'none') {
+    throw new AppError('Perimetre utilisateur introuvable', 403, 'SCOPE_DENIED');
+  }
+
+  if (actorScope.kind !== 'platform' && actorScope.kind !== 'tenant' && scopeType === 'REGION' && actorScope.kind !== 'region') {
+    throw new AppError('Acces au niveau region refuse', 403, 'SCOPE_DENIED');
+  }
+
+  if (
+    actorScope.kind !== 'platform' &&
+    actorScope.kind !== 'tenant' &&
+    scopeType === 'DISTRICT' &&
+    !['region', 'district'].includes(actorScope.kind)
+  ) {
+    throw new AppError('Acces au niveau district refuse', 403, 'SCOPE_DENIED');
+  }
+
+  if (
+    actorScope.kind !== 'platform' &&
+    actorScope.kind !== 'tenant' &&
+    scopeType === 'ASSEMBLY' &&
+    !['region', 'district', 'assembly'].includes(actorScope.kind)
+  ) {
+    throw new AppError('Acces au niveau assemblee refuse', 403, 'SCOPE_DENIED');
+  }
+
+  if (
+    actorScope.kind !== 'platform' &&
+    actorScope.kind !== 'tenant' &&
+    scopeType === 'MINISTRY' &&
+    !['region', 'district', 'assembly'].includes(actorScope.kind)
+  ) {
+    throw new AppError('Acces au niveau ministere refuse', 403, 'SCOPE_DENIED');
+  }
+
+  if (
+    actorScope.kind !== 'platform' &&
+    actorScope.kind !== 'tenant' &&
+    scopeType === 'EVENT' &&
+    !['region', 'district', 'assembly'].includes(actorScope.kind)
+  ) {
+    throw new AppError('Acces au niveau evenement refuse', 403, 'SCOPE_DENIED');
+  }
+
+  if (!scopeId) {
+    throw new AppError('Choisissez une cible pour cette campagne', 400, 'SCOPE_REQUIRED');
+  }
+
+  if (scopeType === 'REGION') {
+    await assertRegionAccess(user, scopeId);
+    return;
+  }
+
+  if (scopeType === 'DISTRICT') {
+    await assertDistrictAccess(user, scopeId);
+    return;
+  }
+
+  if (scopeType === 'ASSEMBLY') {
+    await assertAssemblyAccess(user, scopeId);
+    return;
+  }
+
+  if (scopeType === 'MINISTRY') {
+    const ministry = await prisma.ministry.findUnique({
+      where: { id: scopeId, deletedAt: null },
+      select: { assemblyId: true },
+    });
+    if (!ministry) throw new NotFoundError('Ministere');
+    await assertAssemblyAccess(user, ministry.assemblyId);
+    return;
+  }
+
+  if (scopeType === 'EVENT') {
+    const event = await prisma.event.findUnique({
+      where: { id: scopeId, deletedAt: null },
+      select: { assemblyId: true, districtId: true, regionId: true, tenantId: true },
+    });
+    if (!event) throw new NotFoundError('Evenement');
+    if (event.assemblyId) await assertAssemblyAccess(user, event.assemblyId);
+    else if (event.districtId) await assertDistrictAccess(user, event.districtId);
+    else if (event.regionId) await assertRegionAccess(user, event.regionId);
+    else if (event.tenantId !== user.tenantId) throw new NotFoundError('Evenement');
+    return;
+  }
+
+  throw new AppError('Type de perimetre invalide', 400, 'INVALID_SCOPE');
+}
+
+async function buildCampaignVisibilityWhere(user: AuthUser): Promise<Prisma.PublicCampaignWhereInput> {
+  const actorScope = await getActorScope(user);
+
+  if (actorScope.kind === 'platform') {
+    return {};
+  }
+
+  if (actorScope.kind === 'tenant') {
+    return { tenantId: actorScope.tenantId };
+  }
+
+  if (actorScope.kind === 'none') {
+    return { id: 'NONE' };
+  }
+
+  const scopeTargets: Prisma.PublicCampaignWhereInput[] = [];
+
+  if (actorScope.kind === 'region') {
+    const [districts, assemblies, ministries, events] = await Promise.all([
+      prisma.district.findMany({ where: { regionId: actorScope.regionId, deletedAt: null }, select: { id: true } }),
+      prisma.assembly.findMany({ where: { district: { regionId: actorScope.regionId }, deletedAt: null }, select: { id: true } }),
+      prisma.ministry.findMany({
+        where: { assembly: { district: { regionId: actorScope.regionId } }, deletedAt: null },
+        select: { id: true },
+      }),
+      prisma.event.findMany({
+        where: {
+          tenantId: actorScope.tenantId,
+          deletedAt: null,
+          OR: [
+            { regionId: actorScope.regionId },
+            { district: { regionId: actorScope.regionId } },
+            { assembly: { district: { regionId: actorScope.regionId } } },
+          ],
+        },
+        select: { id: true },
+      }),
+    ]);
+
+    scopeTargets.push({ scopeType: 'REGION', scopeId: actorScope.regionId });
+    if (districts.length) scopeTargets.push({ scopeType: 'DISTRICT', scopeId: { in: districts.map((d) => d.id) } });
+    if (assemblies.length) scopeTargets.push({ scopeType: 'ASSEMBLY', scopeId: { in: assemblies.map((a) => a.id) } });
+    if (ministries.length) scopeTargets.push({ scopeType: 'MINISTRY', scopeId: { in: ministries.map((m) => m.id) } });
+    if (events.length) scopeTargets.push({ scopeType: 'EVENT', scopeId: { in: events.map((event) => event.id) } });
+  }
+
+  if (actorScope.kind === 'district') {
+    const [assemblies, ministries, events] = await Promise.all([
+      prisma.assembly.findMany({ where: { districtId: actorScope.districtId, deletedAt: null }, select: { id: true } }),
+      prisma.ministry.findMany({
+        where: { assembly: { districtId: actorScope.districtId }, deletedAt: null },
+        select: { id: true },
+      }),
+      prisma.event.findMany({
+        where: {
+          tenantId: actorScope.tenantId,
+          deletedAt: null,
+          OR: [
+            { regionId: actorScope.regionId },
+            { districtId: actorScope.districtId },
+            { assembly: { districtId: actorScope.districtId } },
+          ],
+        },
+        select: { id: true },
+      }),
+    ]);
+
+    scopeTargets.push(
+      { scopeType: 'REGION', scopeId: actorScope.regionId },
+      { scopeType: 'DISTRICT', scopeId: actorScope.districtId },
+    );
+    if (assemblies.length) scopeTargets.push({ scopeType: 'ASSEMBLY', scopeId: { in: assemblies.map((a) => a.id) } });
+    if (ministries.length) scopeTargets.push({ scopeType: 'MINISTRY', scopeId: { in: ministries.map((m) => m.id) } });
+    if (events.length) scopeTargets.push({ scopeType: 'EVENT', scopeId: { in: events.map((event) => event.id) } });
+  }
+
+  if (actorScope.kind === 'assembly') {
+    const [ministries, events] = await Promise.all([
+      prisma.ministry.findMany({ where: { assemblyId: actorScope.assemblyId, deletedAt: null }, select: { id: true } }),
+      prisma.event.findMany({
+        where: {
+          tenantId: actorScope.tenantId,
+          deletedAt: null,
+          OR: [
+            { regionId: actorScope.regionId },
+            { districtId: actorScope.districtId },
+            { assemblyId: actorScope.assemblyId },
+          ],
+        },
+        select: { id: true },
+      }),
+    ]);
+
+    scopeTargets.push(
+      { scopeType: 'REGION', scopeId: actorScope.regionId },
+      { scopeType: 'DISTRICT', scopeId: actorScope.districtId },
+      { scopeType: 'ASSEMBLY', scopeId: actorScope.assemblyId },
+    );
+    if (ministries.length) scopeTargets.push({ scopeType: 'MINISTRY', scopeId: { in: ministries.map((m) => m.id) } });
+    if (events.length) scopeTargets.push({ scopeType: 'EVENT', scopeId: { in: events.map((event) => event.id) } });
+  }
+
+  return {
+    tenantId: actorScope.tenantId,
+    OR: scopeTargets.length ? scopeTargets : [{ id: 'NONE' }],
+  };
+}
+
+async function assertExistingCampaignAccess(
+  user: AuthUser,
+  campaign: { scopeType: string; scopeId: string | null },
+) {
+  await assertCampaignScopeAccess(user, {
+    scopeType: campaign.scopeType,
+    scopeId: campaign.scopeId ?? undefined,
+  });
+}
+
 async function upsertDailyMetric(campaignId: string, field: 'views' | 'scans' | 'submissions' | 'successfulActions') {
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
@@ -76,7 +303,9 @@ router.get('/', requirePermission(PERMISSIONS.PUBLIC_CAMPAIGNS_READ), async (req
     const { page = 1, limit = 20 } = req.pagination ?? { page: 1, limit: 20 };
     const { type, status, search } = req.query as Record<string, string | undefined>;
 
+    const visibilityWhere = await buildCampaignVisibilityWhere(req.user!);
     const where: Prisma.PublicCampaignWhereInput = {
+      ...visibilityWhere,
       tenantId,
       deletedAt: null,
       ...(type   ? { type:   type   as Prisma.EnumCampaignTypeFilter } : {}),
@@ -111,17 +340,23 @@ router.get('/stats/overview', requirePermission(PERMISSIONS.PUBLIC_CAMPAIGNS_REA
     const today = new Date();
     today.setUTCHours(0, 0, 0, 0);
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const visibilityWhere = await buildCampaignVisibilityWhere(req.user!);
+    const campaignWhere: Prisma.PublicCampaignWhereInput = {
+      ...visibilityWhere,
+      tenantId,
+      deletedAt: null,
+    };
 
     const [activeCampaigns, totalCampaigns, todayMetrics, monthSubmissions, topCampaigns] = await Promise.all([
-      prisma.publicCampaign.count({ where: { tenantId, status: 'ACTIVE', deletedAt: null } }),
-      prisma.publicCampaign.count({ where: { tenantId, deletedAt: null } }),
+      prisma.publicCampaign.count({ where: { ...campaignWhere, status: 'ACTIVE' } }),
+      prisma.publicCampaign.count({ where: campaignWhere }),
       prisma.publicCampaignMetric.aggregate({
-        where: { campaign: { tenantId }, date: today },
+        where: { campaign: { is: campaignWhere }, date: today },
         _sum: { views: true, scans: true, submissions: true },
       }),
-      prisma.publicSubmission.count({ where: { tenantId, submittedAt: { gte: monthStart } } }),
+      prisma.publicSubmission.count({ where: { tenantId, campaign: { is: campaignWhere }, submittedAt: { gte: monthStart } } }),
       prisma.publicCampaign.findMany({
-        where: { tenantId, deletedAt: null },
+        where: campaignWhere,
         take: 5,
         orderBy: { createdAt: 'desc' },
         include: { _count: { select: { submissions: true } } },
@@ -149,6 +384,7 @@ router.post('/', requirePermission(PERMISSIONS.PUBLIC_CAMPAIGNS_CREATE),
       if (!tenantId) throw new AppError('Tenant requis', 400, 'TENANT_REQUIRED');
 
       const data = req.body as z.infer<typeof campaignCreateSchema>;
+      await assertCampaignScopeAccess(req.user!, data);
       const campaign = await prisma.publicCampaign.create({
         data: {
           tenantId,
@@ -187,6 +423,7 @@ router.get('/:id', requirePermission(PERMISSIONS.PUBLIC_CAMPAIGNS_READ), async (
       },
     });
     if (!campaign) throw new NotFoundError('Campagne introuvable');
+    await assertExistingCampaignAccess(req.user!, campaign);
     sendSuccess(res, campaign);
   } catch (err) { next(err); }
 });
@@ -201,16 +438,20 @@ router.patch('/:id', requirePermission(PERMISSIONS.PUBLIC_CAMPAIGNS_UPDATE),
         where: { id: req.params.id, tenantId: tenantId ?? undefined, deletedAt: null },
       });
       if (!existing) throw new NotFoundError('Campagne introuvable');
+      await assertExistingCampaignAccess(req.user!, existing);
 
       const data = req.body as z.infer<typeof campaignUpdateSchema>;
+      const nextScopeType = data.scopeType ?? existing.scopeType;
+      const nextScopeId = nextScopeType === 'TENANT' ? undefined : data.scopeId ?? existing.scopeId ?? undefined;
+      await assertCampaignScopeAccess(req.user!, { scopeType: nextScopeType, scopeId: nextScopeId });
       const updated = await prisma.publicCampaign.update({
         where: { id: req.params.id },
         data: {
           title:       data.title       ?? existing.title,
           description: data.description ?? existing.description,
           type:        data.type        ?? existing.type,
-          scopeType:   data.scopeType   ?? existing.scopeType,
-          scopeId:     data.scopeId     ?? existing.scopeId,
+          scopeType:   nextScopeType,
+          scopeId:     nextScopeId,
           settings:    data.settings ? (data.settings as Prisma.InputJsonObject) : (existing.settings as Prisma.InputJsonObject),
           startsAt:    data.startsAt ? new Date(data.startsAt) : existing.startsAt,
           endsAt:      data.endsAt   ? new Date(data.endsAt)   : existing.endsAt,
@@ -231,6 +472,7 @@ router.post('/:id/activate', requirePermission(PERMISSIONS.PUBLIC_CAMPAIGNS_ACTI
       where: { id: req.params.id, tenantId: tenantId ?? undefined, deletedAt: null },
     });
     if (!existing) throw new NotFoundError('Campagne introuvable');
+    await assertExistingCampaignAccess(req.user!, existing);
     if (existing.status === 'ARCHIVED') throw new AppError("Impossible d'activer une campagne archivée", 409, 'CAMPAIGN_ARCHIVED');
 
     const newStatus = existing.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE';
@@ -247,6 +489,7 @@ router.delete('/:id', requirePermission(PERMISSIONS.PUBLIC_CAMPAIGNS_DELETE), as
       where: { id: req.params.id, tenantId: tenantId ?? undefined, deletedAt: null },
     });
     if (!existing) throw new NotFoundError('Campagne introuvable');
+    await assertExistingCampaignAccess(req.user!, existing);
 
     await prisma.publicCampaign.update({
       where: { id: req.params.id },
@@ -267,6 +510,7 @@ router.post('/:id/duplicate', requirePermission(PERMISSIONS.PUBLIC_CAMPAIGNS_CRE
       where: { id: req.params.id, tenantId, deletedAt: null },
     });
     if (!existing) throw new NotFoundError('Campagne introuvable');
+    await assertExistingCampaignAccess(req.user!, existing);
 
     const copy = await prisma.publicCampaign.create({
       data: {
@@ -294,6 +538,7 @@ router.get('/:id/links', requirePermission(PERMISSIONS.PUBLIC_LINKS_READ), async
       where: { id: req.params.id, tenantId: tenantId ?? undefined, deletedAt: null },
     });
     if (!campaign) throw new NotFoundError('Campagne introuvable');
+    await assertExistingCampaignAccess(req.user!, campaign);
 
     const links = await prisma.publicLink.findMany({
       where: { campaignId: req.params.id },
@@ -315,6 +560,7 @@ router.post('/:id/links', requirePermission(PERMISSIONS.PUBLIC_LINKS_CREATE),
         where: { id: req.params.id, tenantId, deletedAt: null },
       });
       if (!campaign) throw new NotFoundError('Campagne introuvable');
+    await assertExistingCampaignAccess(req.user!, campaign);
 
       const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
       const data   = req.body as z.infer<typeof linkCreateSchema>;
@@ -342,6 +588,7 @@ router.patch('/:id/links/:linkId', requirePermission(PERMISSIONS.PUBLIC_LINKS_CR
       where: { id: req.params.id, tenantId: tenantId ?? undefined, deletedAt: null },
     });
     if (!campaign) throw new NotFoundError('Campagne introuvable');
+    await assertExistingCampaignAccess(req.user!, campaign);
 
     const link = await prisma.publicLink.findFirst({
       where: { id: req.params.linkId, campaignId: req.params.id },
@@ -370,6 +617,7 @@ router.post('/:id/links/:linkId/qr', requirePermission(PERMISSIONS.PUBLIC_QR_COD
         where: { id: req.params.id, tenantId: tenantId ?? undefined, deletedAt: null },
       });
       if (!campaign) throw new NotFoundError('Campagne introuvable');
+    await assertExistingCampaignAccess(req.user!, campaign);
 
       const link = await prisma.publicLink.findFirst({
         where: { id: req.params.linkId, campaignId: req.params.id },
@@ -425,6 +673,7 @@ router.get('/:id/submissions', requirePermission(PERMISSIONS.PUBLIC_SUBMISSIONS_
       where: { id: req.params.id, tenantId: tenantId ?? undefined, deletedAt: null },
     });
     if (!campaign) throw new NotFoundError('Campagne introuvable');
+    await assertExistingCampaignAccess(req.user!, campaign);
 
     const { page = 1, limit = 20 } = req.pagination ?? { page: 1, limit: 20 };
     const { status } = req.query as { status?: string };
@@ -462,6 +711,7 @@ router.get('/:id/analytics', requirePermission(PERMISSIONS.PUBLIC_ANALYTICS_READ
       include: { _count: { select: { submissions: true } } },
     });
     if (!campaign) throw new NotFoundError('Campagne introuvable');
+    await assertExistingCampaignAccess(req.user!, campaign);
 
     const [metrics, bySource, recentSubmissions] = await Promise.all([
       prisma.publicCampaignMetric.findMany({

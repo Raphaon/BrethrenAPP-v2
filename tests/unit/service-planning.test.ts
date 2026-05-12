@@ -38,15 +38,15 @@ describe('Service Planning module', () => {
     it('list: should order by date ASC', async () => {
       prismaMock.$transaction.mockResolvedValue([[mockPlan], 1] as any);
       const [rows] = await prismaMock.$transaction([
-        prismaMock.servicePlan.findMany({ orderBy: { date: 'asc' } } as any),
-        prismaMock.servicePlan.count() as any,
+        prismaMock.service_plans.findMany({ orderBy: { date: 'asc' } } as any),
+        prismaMock.service_plans.count() as any,
       ] as any);
       expect(rows).toHaveLength(1);
     });
 
     it('create: should store date as Date object', async () => {
-      prismaMock.servicePlan.create.mockResolvedValue(mockPlan as any);
-      const created = await prismaMock.servicePlan.create({
+      prismaMock.service_plans.create.mockResolvedValue(mockPlan as any);
+      const created = await prismaMock.service_plans.create({
         data: { title: 'Culte', assemblyId: 'asm-1', date: new Date('2025-05-25'), createdById: 'user-1' },
       } as any);
       expect(created.date).toBeInstanceOf(Date);
@@ -59,8 +59,8 @@ describe('Service Planning module', () => {
     });
 
     it('publish: should change status to PUBLISHED', async () => {
-      prismaMock.servicePlan.update.mockResolvedValue({ ...mockPlan, status: 'PUBLISHED' } as any);
-      const updated = await prismaMock.servicePlan.update({
+      prismaMock.service_plans.update.mockResolvedValue({ ...mockPlan, status: 'PUBLISHED' } as any);
+      const updated = await prismaMock.service_plans.update({
         where: { id: 'sp-1' },
         data: { status: 'PUBLISHED' },
       } as any);
@@ -68,8 +68,8 @@ describe('Service Planning module', () => {
     });
 
     it('soft delete: should set deletedAt and status ARCHIVED', async () => {
-      prismaMock.servicePlan.update.mockResolvedValue({ ...mockPlan, deletedAt: new Date(), status: 'ARCHIVED' } as any);
-      const deleted = await prismaMock.servicePlan.update({
+      prismaMock.service_plans.update.mockResolvedValue({ ...mockPlan, deletedAt: new Date(), status: 'ARCHIVED' } as any);
+      const deleted = await prismaMock.service_plans.update({
         where: { id: 'sp-1' },
         data: { deletedAt: new Date(), status: 'ARCHIVED' },
       } as any);
@@ -81,8 +81,8 @@ describe('Service Planning module', () => {
 
   describe('Service assignments', () => {
     it('add: should upsert assignment with PENDING status', async () => {
-      prismaMock.serviceAssignment.upsert.mockResolvedValue(mockAssignment as any);
-      const sa = await prismaMock.serviceAssignment.upsert({
+      prismaMock.service_assignments.upsert.mockResolvedValue(mockAssignment as any);
+      const sa = await prismaMock.service_assignments.upsert({
         where: { servicePlanId_userId_role: { servicePlanId: 'sp-1', userId: 'user-2', role: 'Prédicateur' } },
         update: { status: 'PENDING' },
         create: { servicePlanId: 'sp-1', userId: 'user-2', role: 'Prédicateur' },
@@ -92,10 +92,10 @@ describe('Service Planning module', () => {
 
     it('respond CONFIRMED: should set respondedAt', async () => {
       const now = new Date();
-      prismaMock.serviceAssignment.update.mockResolvedValue({
+      prismaMock.service_assignments.update.mockResolvedValue({
         ...mockAssignment, status: 'CONFIRMED', respondedAt: now,
       } as any);
-      const updated = await prismaMock.serviceAssignment.update({
+      const updated = await prismaMock.service_assignments.update({
         where: { id: 'sa-1' },
         data: { status: 'CONFIRMED', respondedAt: now },
       } as any);
@@ -105,10 +105,10 @@ describe('Service Planning module', () => {
 
     it('respond DECLINED: should set respondedAt', async () => {
       const now = new Date();
-      prismaMock.serviceAssignment.update.mockResolvedValue({
+      prismaMock.service_assignments.update.mockResolvedValue({
         ...mockAssignment, status: 'DECLINED', respondedAt: now,
       } as any);
-      const updated = await prismaMock.serviceAssignment.update({
+      const updated = await prismaMock.service_assignments.update({
         where: { id: 'sa-1' },
         data: { status: 'DECLINED', respondedAt: now },
       } as any);
@@ -129,8 +129,8 @@ describe('Service Planning module', () => {
     });
 
     it('remove: should delete assignment record', async () => {
-      prismaMock.serviceAssignment.delete.mockResolvedValue(mockAssignment as any);
-      const deleted = await prismaMock.serviceAssignment.delete({ where: { id: 'sa-1' } } as any);
+      prismaMock.service_assignments.delete.mockResolvedValue(mockAssignment as any);
+      const deleted = await prismaMock.service_assignments.delete({ where: { id: 'sa-1' } } as any);
       expect(deleted.id).toBe('sa-1');
     });
   });

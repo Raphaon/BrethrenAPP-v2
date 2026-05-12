@@ -18,7 +18,7 @@ const envSchema = z.object({
   CORS_CREDENTIALS: z.string().transform((v) => v === 'true').default('true'),
 
   RATE_LIMIT_WINDOW_MS: z.string().transform(Number).default('900000'),
-  RATE_LIMIT_MAX: z.string().transform(Number).default('100'),
+  RATE_LIMIT_MAX: z.string().transform(Number).default('1000'),
   AUTH_RATE_LIMIT_WINDOW_MS: z.string().transform(Number).default('900000'),
   AUTH_RATE_LIMIT_MAX: z.string().transform(Number).default('5'),
 

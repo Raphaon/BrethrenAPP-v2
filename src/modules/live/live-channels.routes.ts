@@ -9,6 +9,10 @@ import { prisma } from '../../database/prisma';
 import { sendSuccess, sendCreated } from '../../utils/response.util';
 import { createAuditLog } from '../../utils/audit.util';
 import { NotFoundError, AppError } from '../../middlewares/error.middleware';
+import {
+  assertOptionalAssemblyAccess,
+  getScopedLiveChannelWhere,
+} from '../../utils/scope-access.util';
 
 const router = Router();
 router.use(authenticate);
@@ -28,11 +32,10 @@ const channelSchema = z.object({
 // GET /
 router.get('/', requirePermission(PERMISSIONS.LIVE_CHANNELS_READ), async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
-    if (!tenantId) throw new AppError('Tenant requis', 400, 'TENANT_REQUIRED');
+    const scopeWhere = await getScopedLiveChannelWhere(req.user!);
 
     const channels = await prisma.liveChannel.findMany({
-      where: { tenantId, isActive: true },
+      where: { isActive: true, AND: [scopeWhere] },
       orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
       include: {
         assembly: { select: { id: true, name: true } },
@@ -50,6 +53,7 @@ router.post('/', requirePermission(PERMISSIONS.LIVE_CHANNELS_CREATE), validate(c
     const tenantId = req.user!.tenantId;
     if (!tenantId) throw new AppError('Tenant requis', 400, 'TENANT_REQUIRED');
     const data = req.body as z.infer<typeof channelSchema>;
+    await assertOptionalAssemblyAccess(req.user!, data.assemblyId, 'Source live');
 
     // S'il est marqué par défaut, on enlève l'ancien default
     if (data.isDefault) {
@@ -80,9 +84,8 @@ router.post('/', requirePermission(PERMISSIONS.LIVE_CHANNELS_CREATE), validate(c
 // GET /:id
 router.get('/:id', requirePermission(PERMISSIONS.LIVE_CHANNELS_READ), async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
     const channel = await prisma.liveChannel.findFirst({
-      where: { id: req.params.id, tenantId: tenantId ?? undefined },
+      where: { id: req.params.id, AND: [await getScopedLiveChannelWhere(req.user!)] },
       include: {
         assembly: { select: { id: true, name: true } },
         services: { where: { deletedAt: null }, orderBy: { scheduledStartAt: 'desc' }, take: 5 },
@@ -99,10 +102,12 @@ router.patch('/:id', requirePermission(PERMISSIONS.LIVE_CHANNELS_UPDATE), valida
     const tenantId = req.user!.tenantId;
     const existing = await prisma.liveChannel.findFirst({ where: { id: req.params.id, tenantId: tenantId ?? undefined } });
     if (!existing) throw new NotFoundError('Source introuvable');
+    await assertOptionalAssemblyAccess(req.user!, existing.assemblyId, 'Source live');
 
     const data = req.body as Partial<z.infer<typeof channelSchema>>;
+    if ('assemblyId' in data) await assertOptionalAssemblyAccess(req.user!, data.assemblyId, 'Source live');
     if (data.isDefault) {
-      await prisma.liveChannel.updateMany({ where: { tenantId: tenantId ?? undefined, isDefault: true }, data: { isDefault: false } });
+      await prisma.liveChannel.updateMany({ where: { tenantId: existing.tenantId, isDefault: true }, data: { isDefault: false } });
     }
 
     const updated = await prisma.liveChannel.update({ where: { id: req.params.id }, data: { ...data, settings: (data.settings ?? existing.settings) as Prisma.InputJsonObject } });
@@ -117,6 +122,7 @@ router.delete('/:id', requirePermission(PERMISSIONS.LIVE_CHANNELS_DELETE), async
     const tenantId = req.user!.tenantId;
     const existing = await prisma.liveChannel.findFirst({ where: { id: req.params.id, tenantId: tenantId ?? undefined } });
     if (!existing) throw new NotFoundError('Source introuvable');
+    await assertOptionalAssemblyAccess(req.user!, existing.assemblyId, 'Source live');
     await prisma.liveChannel.update({ where: { id: req.params.id }, data: { isActive: false } });
     await createAuditLog({ actorId: req.user!.id, action: 'DELETE', entityType: 'LiveChannel', entityId: req.params.id, req });
     sendSuccess(res, null, 'Source désactivée');

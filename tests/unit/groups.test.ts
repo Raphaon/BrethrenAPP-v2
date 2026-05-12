@@ -56,37 +56,37 @@ describe('Groups module — business logic', () => {
     it('list: should build where filter with scopedAssembly', async () => {
       prismaMock.$transaction.mockResolvedValue([[mockGroup], 1] as any);
       const [rows] = await prismaMock.$transaction([
-        prismaMock.group.findMany({ where: { deletedAt: null } } as any),
-        prismaMock.group.count({ where: { deletedAt: null } } as any),
+        prismaMock.groups.findMany({ where: { deletedAt: null } } as any),
+        prismaMock.groups.count({ where: { deletedAt: null } } as any),
       ] as any);
       expect(rows).toBeDefined();
     });
 
     it('findById: should return group when found', async () => {
-      prismaMock.group.findUnique.mockResolvedValue(mockGroup as any);
-      const result = await prismaMock.group.findUnique({ where: { id: 'grp-1' } } as any);
+      prismaMock.groups.findUnique.mockResolvedValue(mockGroup as any);
+      const result = await prismaMock.groups.findUnique({ where: { id: 'grp-1' } } as any);
       expect(result?.id).toBe('grp-1');
       expect(result?.name).toBe('Cellule Alpha');
     });
 
     it('findById: should return null when not found', async () => {
-      prismaMock.group.findUnique.mockResolvedValue(null);
-      const result = await prismaMock.group.findUnique({ where: { id: 'nonexistent' } } as any);
+      prismaMock.groups.findUnique.mockResolvedValue(null);
+      const result = await prismaMock.groups.findUnique({ where: { id: 'nonexistent' } } as any);
       expect(result).toBeNull();
     });
 
     it('create: should persist correct fields', async () => {
-      prismaMock.group.create.mockResolvedValue({ ...mockGroup, id: 'grp-new' } as any);
-      const created = await prismaMock.group.create({
+      prismaMock.groups.create.mockResolvedValue({ ...mockGroup, id: 'grp-new' } as any);
+      const created = await prismaMock.groups.create({
         data: { name: 'Cellule Alpha', assemblyId: 'asm-1', type: 'CELL_GROUP', meetingDay: 'FRIDAY' },
       } as any);
       expect(created.id).toBe('grp-new');
     });
 
     it('update: should only modify allowed fields', async () => {
-      prismaMock.group.findUnique.mockResolvedValue(mockGroup as any);
-      prismaMock.group.update.mockResolvedValue({ ...mockGroup, name: 'Cellule Bêta', meetingTime: '19:00' } as any);
-      const updated = await prismaMock.group.update({
+      prismaMock.groups.findUnique.mockResolvedValue(mockGroup as any);
+      prismaMock.groups.update.mockResolvedValue({ ...mockGroup, name: 'Cellule Bêta', meetingTime: '19:00' } as any);
+      const updated = await prismaMock.groups.update({
         where: { id: 'grp-1' },
         data: { name: 'Cellule Bêta', meetingTime: '19:00' },
       } as any);
@@ -94,8 +94,8 @@ describe('Groups module — business logic', () => {
     });
 
     it('soft delete: should set deletedAt and status DISSOLVED', async () => {
-      prismaMock.group.update.mockResolvedValue({ ...mockGroup, deletedAt: new Date(), status: 'DISSOLVED' } as any);
-      const deleted = await prismaMock.group.update({
+      prismaMock.groups.update.mockResolvedValue({ ...mockGroup, deletedAt: new Date(), status: 'DISSOLVED' } as any);
+      const deleted = await prismaMock.groups.update({
         where: { id: 'grp-1' },
         data: { deletedAt: new Date(), status: 'DISSOLVED' },
       } as any);
@@ -106,11 +106,11 @@ describe('Groups module — business logic', () => {
 
   describe('Group membership', () => {
     it('addMember: should upsert group member with correct role', async () => {
-      prismaMock.groupMember.upsert.mockResolvedValue({
+      prismaMock.group_members.upsert.mockResolvedValue({
         id: 'gm-1', groupId: 'grp-1', memberId: 'mem-1', role: 'leader', status: 'ACTIVE',
         member: { id: 'mem-1', firstName: 'Jean', lastName: 'Paul' },
       } as any);
-      const gm = await prismaMock.groupMember.upsert({
+      const gm = await prismaMock.group_members.upsert({
         where: { groupId_memberId: { groupId: 'grp-1', memberId: 'mem-1' } },
         update: { status: 'ACTIVE', role: 'leader' },
         create: { groupId: 'grp-1', memberId: 'mem-1', role: 'leader' },
@@ -120,10 +120,10 @@ describe('Groups module — business logic', () => {
     });
 
     it('removeMember: should set status INACTIVE with leftAt', async () => {
-      prismaMock.groupMember.update.mockResolvedValue({
+      prismaMock.group_members.update.mockResolvedValue({
         id: 'gm-1', status: 'INACTIVE', leftAt: new Date(),
       } as any);
-      const result = await prismaMock.groupMember.update({
+      const result = await prismaMock.group_members.update({
         where: { id: 'gm-1' },
         data: { status: 'INACTIVE', leftAt: new Date() },
       } as any);

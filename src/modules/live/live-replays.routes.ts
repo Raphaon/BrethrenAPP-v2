@@ -9,6 +9,11 @@ import { prisma } from '../../database/prisma';
 import { sendSuccess, sendCreated, sendPaginated, buildPaginationMeta } from '../../utils/response.util';
 import { createAuditLog } from '../../utils/audit.util';
 import { NotFoundError, AppError } from '../../middlewares/error.middleware';
+import {
+  assertAssemblyAccess,
+  assertOptionalAssemblyAccess,
+  getScopedMediaReplayWhere,
+} from '../../utils/scope-access.util';
 
 const router = Router();
 router.use(authenticate);
@@ -34,15 +39,14 @@ const replaySchema = z.object({
 // GET /
 router.get('/', requirePermission(PERMISSIONS.LIVE_REPLAYS_MANAGE), async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
-    if (!tenantId) throw new AppError('Tenant requis', 400, 'TENANT_REQUIRED');
-
     const { page = 1, limit = 20 } = req.pagination ?? { page: 1, limit: 20 };
     const { assemblyId, visibility, search, series } = req.query as Record<string, string | undefined>;
+    if (assemblyId) await assertAssemblyAccess(req.user!, assemblyId);
+    const scopeWhere = await getScopedMediaReplayWhere(req.user!);
 
     const where: Prisma.MediaReplayWhereInput = {
-      tenantId,
       deletedAt: null,
+      AND: [scopeWhere],
       ...(assemblyId ? { assemblyId }                                                        : {}),
       ...(visibility ? { visibility: visibility as Prisma.EnumReplayVisibilityFilter }       : {}),
       ...(series     ? { series: { contains: series, mode: 'insensitive' } }                 : {}),
@@ -74,6 +78,21 @@ router.post('/', requirePermission(PERMISSIONS.LIVE_REPLAYS_MANAGE), validate(re
     const tenantId = req.user!.tenantId;
     if (!tenantId) throw new AppError('Tenant requis', 400, 'TENANT_REQUIRED');
     const data = req.body as z.infer<typeof replaySchema>;
+    let assemblyId = data.assemblyId;
+    if (data.serviceId) {
+      const service = await prisma.liveService.findFirst({
+        where: { id: data.serviceId, tenantId, deletedAt: null },
+        select: { assemblyId: true },
+      });
+      if (!service) throw new NotFoundError('Service live');
+      await assertAssemblyAccess(req.user!, service.assemblyId);
+      if (assemblyId && assemblyId !== service.assemblyId) {
+        throw new AppError('Le replay doit cibler la meme assemblee que le service live', 400, 'INVALID_SCOPE');
+      }
+      assemblyId = service.assemblyId;
+    } else {
+      await assertOptionalAssemblyAccess(req.user!, assemblyId, 'Replay');
+    }
 
     const replay = await prisma.mediaReplay.create({
       data: {
@@ -81,7 +100,7 @@ router.post('/', requirePermission(PERMISSIONS.LIVE_REPLAYS_MANAGE), validate(re
         createdById:  req.user!.id,
         title:        data.title,
         description:  data.description,
-        assemblyId:   data.assemblyId,
+        assemblyId,
         serviceId:    data.serviceId,
         thumbnailUrl: data.thumbnailUrl,
         videoUrl:     data.videoUrl,
@@ -106,9 +125,8 @@ router.post('/', requirePermission(PERMISSIONS.LIVE_REPLAYS_MANAGE), validate(re
 // GET /:id
 router.get('/:id', requirePermission(PERMISSIONS.LIVE_REPLAYS_MANAGE), async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
     const replay = await prisma.mediaReplay.findFirst({
-      where: { id: req.params.id, tenantId: tenantId ?? undefined, deletedAt: null },
+      where: { id: req.params.id, deletedAt: null, AND: [await getScopedMediaReplayWhere(req.user!)] },
       include: {
         assembly:  { select: { id: true, name: true } },
         service:   { select: { id: true, title: true, slug: true } },
@@ -127,8 +145,9 @@ router.get('/:id', requirePermission(PERMISSIONS.LIVE_REPLAYS_MANAGE), async (re
 // PATCH /:id
 router.patch('/:id', requirePermission(PERMISSIONS.LIVE_REPLAYS_MANAGE), validate(replaySchema.partial()), async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
-    const existing = await prisma.mediaReplay.findFirst({ where: { id: req.params.id, tenantId: tenantId ?? undefined, deletedAt: null } });
+    const existing = await prisma.mediaReplay.findFirst({
+      where: { id: req.params.id, deletedAt: null, AND: [await getScopedMediaReplayWhere(req.user!)] },
+    });
     if (!existing) throw new NotFoundError('Replay introuvable');
 
     const data = req.body as Partial<z.infer<typeof replaySchema>>;
@@ -158,8 +177,9 @@ router.patch('/:id', requirePermission(PERMISSIONS.LIVE_REPLAYS_MANAGE), validat
 // DELETE /:id
 router.delete('/:id', requirePermission(PERMISSIONS.LIVE_REPLAYS_MANAGE), async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
-    const existing = await prisma.mediaReplay.findFirst({ where: { id: req.params.id, tenantId: tenantId ?? undefined, deletedAt: null } });
+    const existing = await prisma.mediaReplay.findFirst({
+      where: { id: req.params.id, deletedAt: null, AND: [await getScopedMediaReplayWhere(req.user!)] },
+    });
     if (!existing) throw new NotFoundError('Replay introuvable');
 
     await prisma.mediaReplay.update({ where: { id: req.params.id }, data: { deletedAt: new Date() } });

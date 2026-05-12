@@ -55,6 +55,7 @@ export class PlanLimitService {
       members,
       preachingPoints,
       ministries,
+      groups,
       adminUsers,
     ] = await prisma.$transaction([
       prisma.region.count({ where: { tenantId, deletedAt: null } }),
@@ -63,6 +64,7 @@ export class PlanLimitService {
       prisma.member.count({ where: { assembly: tenantWhere, deletedAt: null } }),
       prisma.preachingPoint.count({ where: { assembly: tenantWhere, deletedAt: null } }),
       prisma.ministry.count({ where: { assembly: tenantWhere, deletedAt: null } }),
+      prisma.groups.count({ where: { assemblies: tenantWhere, deletedAt: null } }),
       prisma.user.count({
         where: {
           tenantId,
@@ -84,6 +86,7 @@ export class PlanLimitService {
       members,
       preachingPoints,
       ministries,
+      groups,
       adminUsers,
     };
   }

@@ -11,6 +11,8 @@ import { sendSuccess, sendCreated, sendPaginated, buildPaginationMeta } from '..
 import { createAuditLog } from '../../utils/audit.util';
 import { notifyUsers } from '../../utils/notify.util';
 import { NotFoundError, AppError } from '../../middlewares/error.middleware';
+import { assertAssemblyAccess, getScopedLiveServiceWhere } from '../../utils/scope-access.util';
+import type { AuthUser } from '../../shared/types/express';
 
 const router = Router();
 router.use(authenticate);
@@ -74,9 +76,10 @@ function generateServiceSlug(title: string): string {
   return `${base}-${crypto.randomBytes(4).toString('hex')}`;
 }
 
-async function assertServiceAccess(id: string, tenantId: string | null | undefined) {
+async function assertServiceAccess(id: string, user: AuthUser) {
+  const scopeWhere = await getScopedLiveServiceWhere(user);
   const service = await prisma.liveService.findFirst({
-    where: { id, tenantId: tenantId ?? undefined, deletedAt: null },
+    where: { id, deletedAt: null, AND: [scopeWhere] },
   });
   if (!service) throw new NotFoundError('Service introuvable');
   return service;
@@ -85,15 +88,14 @@ async function assertServiceAccess(id: string, tenantId: string | null | undefin
 // ─── LIST ─────────────────────────────────────────────────────────────────────
 router.get('/', requirePermission(PERMISSIONS.LIVE_SERVICES_READ), async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
-    if (!tenantId) throw new AppError('Tenant requis', 400, 'TENANT_REQUIRED');
-
     const { page = 1, limit = 20 } = req.pagination ?? { page: 1, limit: 20 };
     const { status, type, assemblyId, search } = req.query as Record<string, string | undefined>;
+    if (assemblyId) await assertAssemblyAccess(req.user!, assemblyId);
+    const scopeWhere = await getScopedLiveServiceWhere(req.user!);
 
     const where: Prisma.LiveServiceWhereInput = {
-      tenantId,
       deletedAt: null,
+      AND: [scopeWhere],
       ...(status     ? { status: status as Prisma.EnumLiveServiceStatusFilter }        : {}),
       ...(type       ? { type: type as Prisma.EnumLiveServiceTypeFilter }               : {}),
       ...(assemblyId ? { assemblyId }                                                    : {}),
@@ -125,6 +127,7 @@ router.post('/', requirePermission(PERMISSIONS.LIVE_SERVICES_CREATE), validate(s
     const tenantId = req.user!.tenantId;
     if (!tenantId) throw new AppError('Tenant requis', 400, 'TENANT_REQUIRED');
     const data = req.body as z.infer<typeof serviceSchema>;
+    await assertAssemblyAccess(req.user!, data.assemblyId);
 
     const slug = generateServiceSlug(data.title);
     const service = await prisma.liveService.create({
@@ -164,9 +167,8 @@ router.post('/', requirePermission(PERMISSIONS.LIVE_SERVICES_CREATE), validate(s
 // ─── GET /:id ─────────────────────────────────────────────────────────────────
 router.get('/:id', requirePermission(PERMISSIONS.LIVE_SERVICES_READ), async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
     const service = await prisma.liveService.findFirst({
-      where: { id: req.params.id, tenantId: tenantId ?? undefined, deletedAt: null },
+      where: { id: req.params.id, deletedAt: null, AND: [await getScopedLiveServiceWhere(req.user!)] },
       include: {
         assembly: { select: { id: true, name: true } },
         channel:  { select: { id: true, name: true, provider: true, streamUrl: true, embedCode: true } },
@@ -184,8 +186,7 @@ router.get('/:id', requirePermission(PERMISSIONS.LIVE_SERVICES_READ), async (req
 // ─── PATCH /:id ───────────────────────────────────────────────────────────────
 router.patch('/:id', requirePermission(PERMISSIONS.LIVE_SERVICES_UPDATE), validate(serviceSchema.partial()), async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
-    const existing = await assertServiceAccess(req.params.id, tenantId);
+    const existing = await assertServiceAccess(req.params.id, req.user!);
     const data = req.body as Partial<z.infer<typeof serviceSchema>>;
 
     const updated = await prisma.liveService.update({
@@ -220,8 +221,7 @@ router.patch('/:id', requirePermission(PERMISSIONS.LIVE_SERVICES_UPDATE), valida
 // ─── POST /:id/publish ────────────────────────────────────────────────────────
 router.post('/:id/publish', requirePermission(PERMISSIONS.LIVE_SERVICES_PUBLISH), async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
-    const service = await assertServiceAccess(req.params.id, tenantId);
+    const service = await assertServiceAccess(req.params.id, req.user!);
 
     if (!['DRAFT','SCHEDULED'].includes(service.status)) {
       throw new AppError('Seuls les services en brouillon ou planifiés peuvent être publiés', 409, 'INVALID_STATUS');
@@ -236,7 +236,7 @@ router.post('/:id/publish', requirePermission(PERMISSIONS.LIVE_SERVICES_PUBLISH)
     void (async () => {
       try {
         const members = await prisma.userRole.findMany({
-          where: { tenantId: tenantId!, role: { level: { gte: 1 } } },
+          where: { tenantId: service.tenantId, role: { level: { gte: 1 } } },
           select: { userId: true },
         });
         await notifyUsers({
@@ -260,8 +260,7 @@ router.post('/:id/publish', requirePermission(PERMISSIONS.LIVE_SERVICES_PUBLISH)
 // ─── POST /:id/start — Démarre le live ───────────────────────────────────────
 router.post('/:id/start', requirePermission(PERMISSIONS.LIVE_SERVICES_PUBLISH), async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
-    const service  = await assertServiceAccess(req.params.id, tenantId);
+    const service = await assertServiceAccess(req.params.id, req.user!);
     if (service.status === 'LIVE') throw new AppError('Le live est déjà en cours', 409, 'ALREADY_LIVE');
 
     const updated = await prisma.liveService.update({
@@ -273,7 +272,7 @@ router.post('/:id/start', requirePermission(PERMISSIONS.LIVE_SERVICES_PUBLISH), 
     void (async () => {
       try {
         const members = await prisma.userRole.findMany({
-          where: { tenantId: tenantId! },
+          where: { tenantId: service.tenantId },
           select: { userId: true },
         });
         await notifyUsers({
@@ -294,8 +293,7 @@ router.post('/:id/start', requirePermission(PERMISSIONS.LIVE_SERVICES_PUBLISH), 
 // ─── POST /:id/end — Termine le live ─────────────────────────────────────────
 router.post('/:id/end', requirePermission(PERMISSIONS.LIVE_SERVICES_PUBLISH), async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
-    await assertServiceAccess(req.params.id, tenantId);
+    await assertServiceAccess(req.params.id, req.user!);
 
     const updated = await prisma.liveService.update({
       where: { id: req.params.id },
@@ -309,8 +307,7 @@ router.post('/:id/end', requirePermission(PERMISSIONS.LIVE_SERVICES_PUBLISH), as
 // ─── DELETE /:id ──────────────────────────────────────────────────────────────
 router.delete('/:id', requirePermission(PERMISSIONS.LIVE_SERVICES_DELETE), async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
-    await assertServiceAccess(req.params.id, tenantId);
+    await assertServiceAccess(req.params.id, req.user!);
     await prisma.liveService.update({ where: { id: req.params.id }, data: { deletedAt: new Date(), status: 'ARCHIVED' } });
     await createAuditLog({ actorId: req.user!.id, action: 'DELETE', entityType: 'LiveService', entityId: req.params.id, req });
     sendSuccess(res, null, 'Service archivé');
@@ -321,12 +318,7 @@ router.delete('/:id', requirePermission(PERMISSIONS.LIVE_SERVICES_DELETE), async
 
 router.get('/:id/chat', async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
-    const service  = await prisma.liveService.findFirst({
-      where: { id: req.params.id, tenantId: tenantId ?? undefined, deletedAt: null },
-      select: { allowChat: true },
-    });
-    if (!service) throw new NotFoundError('Service introuvable');
+    const service = await assertServiceAccess(req.params.id, req.user!);
     if (!service.allowChat) { sendSuccess(res, []); return; }
 
     const since = req.query.since ? new Date(String(req.query.since)) : undefined;
@@ -346,12 +338,7 @@ router.get('/:id/chat', async (req, res, next) => {
 
 router.post('/:id/chat', validate(chatMessageSchema), async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
-    const service  = await prisma.liveService.findFirst({
-      where: { id: req.params.id, tenantId: tenantId ?? undefined, deletedAt: null },
-      select: { allowChat: true, status: true },
-    });
-    if (!service) throw new NotFoundError('Service introuvable');
+    const service = await assertServiceAccess(req.params.id, req.user!);
     if (!service.allowChat) throw new AppError('Chat désactivé pour ce service', 403, 'CHAT_DISABLED');
     if (!['LIVE','READY'].includes(service.status)) throw new AppError('Le chat n\'est disponible que pendant le live', 409, 'NOT_LIVE');
 
@@ -377,8 +364,7 @@ router.post('/:id/chat', validate(chatMessageSchema), async (req, res, next) => 
 
 router.patch('/:id/chat/:msgId/hide', requirePermission(PERMISSIONS.LIVE_CHAT_MODERATE), async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
-    await assertServiceAccess(req.params.id, tenantId);
+    await assertServiceAccess(req.params.id, req.user!);
     await prisma.liveChatMessage.update({ where: { id: req.params.msgId }, data: { status: 'HIDDEN' } });
     sendSuccess(res, null, 'Message masqué');
   } catch (err) { next(err); }
@@ -386,8 +372,7 @@ router.patch('/:id/chat/:msgId/hide', requirePermission(PERMISSIONS.LIVE_CHAT_MO
 
 router.patch('/:id/chat/:msgId/pin', requirePermission(PERMISSIONS.LIVE_CHAT_MODERATE), async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
-    await assertServiceAccess(req.params.id, tenantId);
+    await assertServiceAccess(req.params.id, req.user!);
     // Un seul message épinglé à la fois
     await prisma.liveChatMessage.updateMany({ where: { serviceId: req.params.id, isPinned: true }, data: { isPinned: false } });
     await prisma.liveChatMessage.update({ where: { id: req.params.msgId }, data: { isPinned: true } });
@@ -399,8 +384,7 @@ router.patch('/:id/chat/:msgId/pin', requirePermission(PERMISSIONS.LIVE_CHAT_MOD
 
 router.get('/:id/prayer-requests', requirePermission(PERMISSIONS.LIVE_PRAYER_MANAGE), async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
-    await assertServiceAccess(req.params.id, tenantId);
+    await assertServiceAccess(req.params.id, req.user!);
     const { status } = req.query as { status?: string };
     const requests = await prisma.livePrayerRequest.findMany({
       where: {
@@ -416,8 +400,7 @@ router.get('/:id/prayer-requests', requirePermission(PERMISSIONS.LIVE_PRAYER_MAN
 
 router.patch('/:id/prayer-requests/:reqId', requirePermission(PERMISSIONS.LIVE_PRAYER_MANAGE), async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
-    await assertServiceAccess(req.params.id, tenantId);
+    await assertServiceAccess(req.params.id, req.user!);
     const { status, assignedToId, notes } = req.body as { status?: string; assignedToId?: string; notes?: string };
     const updated = await prisma.livePrayerRequest.update({
       where: { id: req.params.reqId },
@@ -436,8 +419,7 @@ router.patch('/:id/prayer-requests/:reqId', requirePermission(PERMISSIONS.LIVE_P
 
 router.get('/:id/moments', requirePermission(PERMISSIONS.LIVE_MOMENTS_MANAGE), async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
-    await assertServiceAccess(req.params.id, tenantId);
+    await assertServiceAccess(req.params.id, req.user!);
     const moments = await prisma.liveMoment.findMany({
       where: { serviceId: req.params.id },
       orderBy: { createdAt: 'desc' },
@@ -448,8 +430,7 @@ router.get('/:id/moments', requirePermission(PERMISSIONS.LIVE_MOMENTS_MANAGE), a
 
 router.post('/:id/moments', requirePermission(PERMISSIONS.LIVE_MOMENTS_MANAGE), validate(momentSchema), async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
-    await assertServiceAccess(req.params.id, tenantId);
+    await assertServiceAccess(req.params.id, req.user!);
     const data = req.body as z.infer<typeof momentSchema>;
     const moment = await prisma.liveMoment.create({
       data: {
@@ -472,8 +453,7 @@ router.post('/:id/moments', requirePermission(PERMISSIONS.LIVE_MOMENTS_MANAGE), 
 // Déclencher un moment manuellement (régie live)
 router.post('/:id/moments/:momentId/trigger', requirePermission(PERMISSIONS.LIVE_MOMENTS_MANAGE), async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
-    await assertServiceAccess(req.params.id, tenantId);
+    await assertServiceAccess(req.params.id, req.user!);
 
     // Désactive les autres moments actifs
     await prisma.liveMoment.updateMany({ where: { serviceId: req.params.id, isActive: true }, data: { isActive: false, hiddenAt: new Date() } });
@@ -488,8 +468,7 @@ router.post('/:id/moments/:momentId/trigger', requirePermission(PERMISSIONS.LIVE
 
 router.post('/:id/moments/:momentId/hide', requirePermission(PERMISSIONS.LIVE_MOMENTS_MANAGE), async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
-    await assertServiceAccess(req.params.id, tenantId);
+    await assertServiceAccess(req.params.id, req.user!);
     await prisma.liveMoment.update({ where: { id: req.params.momentId }, data: { isActive: false, hiddenAt: new Date() } });
     sendSuccess(res, null, 'Moment masqué');
   } catch (err) { next(err); }
@@ -499,12 +478,7 @@ router.post('/:id/moments/:momentId/hide', requirePermission(PERMISSIONS.LIVE_MO
 
 router.post('/:id/join', async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
-    const service  = await prisma.liveService.findFirst({
-      where: { id: req.params.id, tenantId: tenantId ?? undefined, deletedAt: null },
-      select: { id: true, status: true, viewCount: true },
-    });
-    if (!service) throw new NotFoundError('Service introuvable');
+    await assertServiceAccess(req.params.id, req.user!);
 
     const session = await prisma.liveViewerSession.create({
       data: {
@@ -546,12 +520,7 @@ router.post('/:id/leave', async (req, res, next) => {
 // ─── ENGAGEMENT (réactions) ───────────────────────────────────────────────────
 router.post('/:id/engage', async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
-    const service  = await prisma.liveService.findFirst({
-      where: { id: req.params.id, tenantId: tenantId ?? undefined, deletedAt: null },
-      select: { id: true },
-    });
-    if (!service) throw new NotFoundError('Service introuvable');
+    await assertServiceAccess(req.params.id, req.user!);
 
     const { type, metadata } = req.body as { type: string; metadata?: Record<string, unknown> };
     const validTypes = ['REACTION_AMEN','REACTION_PRAYER','REACTION_HEART','CTA_CLICK','SHARE'];
@@ -573,9 +542,8 @@ router.post('/:id/engage', async (req, res, next) => {
 // ─── ANALYTICS ────────────────────────────────────────────────────────────────
 router.get('/:id/analytics', requirePermission(PERMISSIONS.LIVE_ANALYTICS_READ), async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
     const service  = await prisma.liveService.findFirst({
-      where: { id: req.params.id, tenantId: tenantId ?? undefined, deletedAt: null },
+      where: { id: req.params.id, deletedAt: null, AND: [await getScopedLiveServiceWhere(req.user!)] },
       include: { _count: { select: { chatMessages: true, prayerRequests: true, viewerSessions: true } } },
     });
     if (!service) throw new NotFoundError('Service introuvable');
@@ -626,8 +594,7 @@ router.get('/:id/analytics', requirePermission(PERMISSIONS.LIVE_ANALYTICS_READ),
 // ─── HOSTS ────────────────────────────────────────────────────────────────────
 router.get('/:id/hosts', requirePermission(PERMISSIONS.LIVE_HOSTS_MANAGE), async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
-    await assertServiceAccess(req.params.id, tenantId);
+    await assertServiceAccess(req.params.id, req.user!);
     const hosts = await prisma.liveHostAssignment.findMany({
       where: { serviceId: req.params.id },
       include: { user: { select: { id: true, firstName: true, lastName: true, avatar: true, email: true } } },
@@ -638,8 +605,7 @@ router.get('/:id/hosts', requirePermission(PERMISSIONS.LIVE_HOSTS_MANAGE), async
 
 router.post('/:id/hosts', requirePermission(PERMISSIONS.LIVE_HOSTS_MANAGE), async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
-    await assertServiceAccess(req.params.id, tenantId);
+    await assertServiceAccess(req.params.id, req.user!);
     const { userId, role } = req.body as { userId: string; role?: string };
     const assignment = await prisma.liveHostAssignment.upsert({
       where: { serviceId_userId: { serviceId: req.params.id, userId } },
@@ -652,8 +618,7 @@ router.post('/:id/hosts', requirePermission(PERMISSIONS.LIVE_HOSTS_MANAGE), asyn
 
 router.delete('/:id/hosts/:userId', requirePermission(PERMISSIONS.LIVE_HOSTS_MANAGE), async (req, res, next) => {
   try {
-    const tenantId = req.user!.tenantId;
-    await assertServiceAccess(req.params.id, tenantId);
+    await assertServiceAccess(req.params.id, req.user!);
     await prisma.liveHostAssignment.deleteMany({ where: { serviceId: req.params.id, userId: req.params.userId } });
     sendSuccess(res, null, 'Hôte retiré');
   } catch (err) { next(err); }

@@ -19,16 +19,16 @@ describe('Attendance module', () => {
 
   describe('Record attendance', () => {
     it('should delete existing records for same session before re-creating', async () => {
-      prismaMock.attendance.deleteMany.mockResolvedValue({ count: 2 });
-      const result = await prismaMock.attendance.deleteMany({
+      prismaMock.attendances.deleteMany.mockResolvedValue({ count: 2 });
+      const result = await prismaMock.attendances.deleteMany({
         where: { entityType: 'GROUP', entityId: 'grp-1', sessionDate: { gte: sessionDate, lte: sessionDate } },
       } as any);
       expect(result.count).toBe(2);
     });
 
     it('should create attendance records in bulk', async () => {
-      prismaMock.attendance.createMany.mockResolvedValue({ count: 3 });
-      const result = await prismaMock.attendance.createMany({
+      prismaMock.attendances.createMany.mockResolvedValue({ count: 3 });
+      const result = await prismaMock.attendances.createMany({
         data: mockAttendances.map((a) => ({
           entityType: a.entityType, entityId: a.entityId,
           memberId: a.memberId, isPresent: a.isPresent,
@@ -39,8 +39,8 @@ describe('Attendance module', () => {
     });
 
     it('should accept visitorName when memberId is absent', async () => {
-      prismaMock.attendance.createMany.mockResolvedValue({ count: 1 });
-      const result = await prismaMock.attendance.createMany({
+      prismaMock.attendances.createMany.mockResolvedValue({ count: 1 });
+      const result = await prismaMock.attendances.createMany({
         data: [{ entityType: 'GROUP', entityId: 'grp-1', memberId: null, visitorName: 'Visiteur inconnu', isPresent: true, sessionDate, takenById: 'user-1' }],
       } as any);
       expect(result.count).toBe(1);
@@ -53,8 +53,8 @@ describe('Attendance module', () => {
     it('list: should return paginated records', async () => {
       prismaMock.$transaction.mockResolvedValue([mockAttendances, 3] as any);
       const [rows, total] = await prismaMock.$transaction([
-        prismaMock.attendance.findMany({ where: { entityType: 'GROUP', entityId: 'grp-1' } } as any),
-        prismaMock.attendance.count({ where: { entityType: 'GROUP', entityId: 'grp-1' } } as any),
+        prismaMock.attendances.findMany({ where: { entityType: 'GROUP', entityId: 'grp-1' } } as any),
+        prismaMock.attendances.count({ where: { entityType: 'GROUP', entityId: 'grp-1' } } as any),
       ] as any);
       expect(rows).toHaveLength(3);
       expect(total).toBe(3);
@@ -63,8 +63,8 @@ describe('Attendance module', () => {
     it('list: should filter by memberId', async () => {
       prismaMock.$transaction.mockResolvedValue([[mockAttendances[0]], 1] as any);
       const [rows] = await prismaMock.$transaction([
-        prismaMock.attendance.findMany({ where: { memberId: 'mem-1' } } as any),
-        prismaMock.attendance.count({ where: { memberId: 'mem-1' } } as any),
+        prismaMock.attendances.findMany({ where: { memberId: 'mem-1' } } as any),
+        prismaMock.attendances.count({ where: { memberId: 'mem-1' } } as any),
       ] as any);
       expect(rows).toHaveLength(1);
       expect(rows[0].memberId).toBe('mem-1');
@@ -113,14 +113,14 @@ describe('Attendance module', () => {
     });
 
     it('should resolve assemblyId from GROUP entityType', async () => {
-      prismaMock.group.findUnique.mockResolvedValue({ id: 'grp-1', assemblyId: 'asm-1' } as any);
-      const group = await prismaMock.group.findUnique({ where: { id: 'grp-1' } } as any);
+      prismaMock.groups.findUnique.mockResolvedValue({ id: 'grp-1', assemblyId: 'asm-1' } as any);
+      const group = await prismaMock.groups.findUnique({ where: { id: 'grp-1' } } as any);
       expect(group?.assemblyId).toBe('asm-1');
     });
 
     it('should resolve assemblyId from PROGRAM entityType', async () => {
-      prismaMock.program.findUnique.mockResolvedValue({ id: 'prog-1', assemblyId: 'asm-1' } as any);
-      const program = await prismaMock.program.findUnique({ where: { id: 'prog-1' } } as any);
+      prismaMock.programs.findUnique.mockResolvedValue({ id: 'prog-1', assemblyId: 'asm-1' } as any);
+      const program = await prismaMock.programs.findUnique({ where: { id: 'prog-1' } } as any);
       expect(program?.assemblyId).toBe('asm-1');
     });
   });

@@ -210,6 +210,115 @@ export async function getScopedPreachingPointWhere(user: AuthUser): Promise<Pris
   }
 }
 
+export async function assertOptionalAssemblyAccess(
+  user: AuthUser,
+  assemblyId: string | null | undefined,
+  entityName = 'Ressource',
+): Promise<void> {
+  if (assemblyId) {
+    await assertAssemblyAccess(user, assemblyId);
+    return;
+  }
+
+  const scope = await getActorScope(user);
+  if (scope.kind === 'platform' || scope.kind === 'tenant') return;
+
+  throw new ForbiddenError(`${entityName} sans assemblee reservee aux administrateurs du tenant`);
+}
+
+export async function getScopedLiveServiceWhere(user: AuthUser): Promise<Prisma.LiveServiceWhereInput> {
+  const scope = await getActorScope(user);
+
+  switch (scope.kind) {
+    case 'platform':
+      return {};
+    case 'tenant':
+      return { tenantId: scope.tenantId };
+    case 'region':
+      return { tenantId: scope.tenantId, assembly: { district: { regionId: scope.regionId } } };
+    case 'district':
+      return { tenantId: scope.tenantId, assembly: { districtId: scope.districtId } };
+    case 'assembly':
+      return { tenantId: scope.tenantId, assemblyId: scope.assemblyId };
+    default:
+      return { id: 'NONE' };
+  }
+}
+
+export async function getScopedLiveChannelWhere(user: AuthUser): Promise<Prisma.LiveChannelWhereInput> {
+  const scope = await getActorScope(user);
+
+  switch (scope.kind) {
+    case 'platform':
+      return {};
+    case 'tenant':
+      return { tenantId: scope.tenantId };
+    case 'region':
+      return {
+        tenantId: scope.tenantId,
+        OR: [
+          { assemblyId: null },
+          { assembly: { district: { regionId: scope.regionId } } },
+        ],
+      };
+    case 'district':
+      return {
+        tenantId: scope.tenantId,
+        OR: [
+          { assemblyId: null },
+          { assembly: { districtId: scope.districtId } },
+        ],
+      };
+    case 'assembly':
+      return {
+        tenantId: scope.tenantId,
+        OR: [
+          { assemblyId: null },
+          { assemblyId: scope.assemblyId },
+        ],
+      };
+    default:
+      return { id: 'NONE' };
+  }
+}
+
+export async function getScopedMediaReplayWhere(user: AuthUser): Promise<Prisma.MediaReplayWhereInput> {
+  const scope = await getActorScope(user);
+
+  switch (scope.kind) {
+    case 'platform':
+      return {};
+    case 'tenant':
+      return { tenantId: scope.tenantId };
+    case 'region':
+      return {
+        tenantId: scope.tenantId,
+        OR: [
+          { assembly: { district: { regionId: scope.regionId } } },
+          { service: { assembly: { district: { regionId: scope.regionId } } } },
+        ],
+      };
+    case 'district':
+      return {
+        tenantId: scope.tenantId,
+        OR: [
+          { assembly: { districtId: scope.districtId } },
+          { service: { assembly: { districtId: scope.districtId } } },
+        ],
+      };
+    case 'assembly':
+      return {
+        tenantId: scope.tenantId,
+        OR: [
+          { assemblyId: scope.assemblyId },
+          { service: { assemblyId: scope.assemblyId } },
+        ],
+      };
+    default:
+      return { id: 'NONE' };
+  }
+}
+
 export async function getScopedUserWhere(user: AuthUser): Promise<Prisma.UserWhereInput> {
   const scope = await getActorScope(user);
 
